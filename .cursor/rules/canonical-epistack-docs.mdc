@@ -1,0 +1,38 @@
+---
+description: Warn when proposals conflict with canonical FLF Epistack competition docs
+alwaysApply: true
+---
+
+# Canonical Epistack documents
+
+The competition materials under `docs/competition/` are **canonical constraints**
+for this repo. Policy: [`docs/competition/CANONICAL.md`](docs/competition/CANONICAL.md).
+
+Canonical set (read when planning or reviewing work that might conflict):
+
+- `docs/competition/epistack.md` — stack vision / objectivity–subjectivity split
+- `docs/competition/epistack-competition.md` — brief, layers, case studies, entry shapes
+- `docs/competition/judging-criteria.md` — uplift, generalizability, compounding, scalability, transparency, adversarial robustness, insight
+- `docs/competition/format-and-length.md` — judge attention budget / format
+
+Prefer live FLF pages if mirrors diverge: https://flf.org/epistack/ and
+https://flf.org/epistack-competition/ (PDFs for judging/format appendices).
+
+## Required behavior
+
+When the user’s proposal, plan, or requested change **seems to contravene**
+these documents:
+
+1. **Warn before proceeding** — brief, specific: which doc, what tension.
+2. **Do not silently implement** the conflicting direction; ask whether to
+   proceed as an explicit exception or adjust to fit.
+3. Treat “contravene” as material conflict with goals or constraints (not mere
+   stylistic preference), e.g.:
+   - single-user / non-compounding artifacts as the end product
+   - opaque methodology or polished demo without a clear, critiqueable workflow
+   - collapsing provenance/structure into uncheckable narrative conclusions
+   - one-case overfitting with no generalizability story
+   - ignoring the ~10-page core reading budget without a designated entry slice
+   - positioning the system as truth-arbiter rather than investigation support
+
+Compatible exploration and tradeoffs are fine; undocumented overrides are not.

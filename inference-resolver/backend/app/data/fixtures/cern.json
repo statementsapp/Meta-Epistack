@@ -1,0 +1,258 @@
+{
+  "demo_id": "cern",
+  "generated_at": "2026-07-30T20:58:37.288129+00:00",
+  "result": {
+    "run_id": 9,
+    "mode": "batched",
+    "model": "grok-4",
+    "input_kind": "text",
+    "claims": [
+      {
+        "id": "c0",
+        "text": "Some members of the public worried that the Large Hadron Collider might create a black hole that could destroy the Earth.",
+        "span": {
+          "start": 0,
+          "end": 121
+        }
+      },
+      {
+        "id": "c1",
+        "text": "If microscopic black holes could be produced at the LHC, they would evaporate almost instantly via Hawking radiation.",
+        "span": {
+          "start": 146,
+          "end": 258
+        }
+      },
+      {
+        "id": "c2",
+        "text": "Microscopic black holes produced at the LHC could not grow.",
+        "span": {
+          "start": 260,
+          "end": 282
+        }
+      },
+      {
+        "id": "c3",
+        "text": "Cosmic rays with far higher energies than the LHC have struck the Earth, the Moon, and other dense bodies for billions of years.",
+        "span": {
+          "start": 319,
+          "end": 453
+        }
+      },
+      {
+        "id": "c4",
+        "text": "Cosmic rays have not created dangerous black holes despite billions of years of bombardment.",
+        "span": {
+          "start": 454,
+          "end": 492
+        }
+      },
+      {
+        "id": "c5",
+        "text": "The lack of dangerous black holes from cosmic rays shows that the LHC process is safe.",
+        "span": {
+          "start": 494,
+          "end": 536
+        }
+      },
+      {
+        "id": "c6",
+        "text": "The observed survival of the Moon and Sun under cosmic-ray bombardment supports the conclusion that collider energies pose no risk.",
+        "span": {
+          "start": 585,
+          "end": 720
+        }
+      },
+      {
+        "id": "c7",
+        "text": "The evaporation argument and the cosmic-ray argument are mutually reinforcing reasons to reject the doomsday scenario.",
+        "span": {
+          "start": 722,
+          "end": 866
+        }
+      }
+    ],
+    "links": [
+      {
+        "id": "l_b0",
+        "source": "c1",
+        "target": "c2",
+        "type": "supports",
+        "rationale": "[1] directly entails [2] because evaporation removes mass faster than it can be added",
+        "assumption": "instant evaporation via Hawking radiation precludes any net growth or persistence of the black hole",
+        "confidence": 0.9,
+        "call_ids": [
+          16
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b1",
+        "source": "c1",
+        "target": "c0",
+        "type": "rebuts",
+        "rationale": "[1] removes the mechanism by which the feared destruction in [0] could occur",
+        "assumption": "a black hole that evaporates instantly cannot accumulate enough mass to destroy the Earth",
+        "confidence": 0.85,
+        "call_ids": [
+          16
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b2",
+        "source": "c2",
+        "target": "c0",
+        "type": "rebuts",
+        "rationale": "[2] eliminates the growth step presupposed by the doomsday worry in [0]",
+        "assumption": "a non-growing microscopic black hole poses no existential threat to the Earth",
+        "confidence": 0.8,
+        "call_ids": [
+          16
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b3",
+        "source": "c3",
+        "target": "c4",
+        "type": "supports",
+        "rationale": "[3] supplies the empirical premise from which [4] draws its negative conclusion",
+        "assumption": "higher-energy impacts over geological time constitute a natural experiment that would have produced dangerous black holes if they were possible",
+        "confidence": 0.9,
+        "call_ids": [
+          16
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b4",
+        "source": "c4",
+        "target": "c5",
+        "type": "supports",
+        "rationale": "[4] is offered as direct evidence for the safety claim in [5]",
+        "assumption": "the LHC collision environment is sufficiently similar to cosmic-ray events for the absence of harm in nature to transfer to the collider",
+        "confidence": 0.85,
+        "call_ids": [
+          16
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b5",
+        "source": "c4",
+        "target": "c6",
+        "type": "supports",
+        "rationale": "[4] is the factual basis restated in [6] with explicit reference to the Moon and Sun",
+        "assumption": "survival of dense bodies under cosmic-ray flux implies safety at collider energies",
+        "confidence": 0.85,
+        "call_ids": [
+          16
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b6",
+        "source": "c5",
+        "target": "c7",
+        "type": "supports",
+        "rationale": "[5] constitutes the cosmic-ray component that [7] says reinforces the evaporation argument",
+        "assumption": "the cosmic-ray safety argument is one of the two mutually reinforcing lines of evidence mentioned in [7]",
+        "confidence": 0.8,
+        "call_ids": [
+          16
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b7",
+        "source": "c1",
+        "target": "c7",
+        "type": "supports",
+        "rationale": "[1] is the evaporation argument that [7] pairs with the cosmic-ray argument",
+        "assumption": "the evaporation argument is one of the two mutually reinforcing lines of evidence mentioned in [7]",
+        "confidence": 0.8,
+        "call_ids": [
+          16
+        ],
+        "model": "grok-4.3"
+      }
+    ],
+    "calls": [
+      {
+        "id": 15,
+        "stage": "extract",
+        "mode": "batched",
+        "model": "grok-4.3",
+        "prompt_tokens": 494,
+        "completion_tokens": 415,
+        "total_tokens": 909,
+        "cost_usd": 0.0077069999999999994,
+        "latency_ms": 9619
+      },
+      {
+        "id": 16,
+        "stage": "resolve",
+        "mode": "batched",
+        "model": "grok-4.3",
+        "prompt_tokens": 670,
+        "completion_tokens": 591,
+        "total_tokens": 1261,
+        "cost_usd": 0.010875000000000001,
+        "latency_ms": 19136
+      }
+    ],
+    "stage_summary": [
+      {
+        "stage": "extract",
+        "calls": 1,
+        "prompt_tokens": 494,
+        "completion_tokens": 415,
+        "total_tokens": 909,
+        "cost_usd": 0.0077069999999999994
+      },
+      {
+        "stage": "resolve",
+        "calls": 1,
+        "prompt_tokens": 670,
+        "completion_tokens": 591,
+        "total_tokens": 1261,
+        "cost_usd": 0.010875000000000001
+      }
+    ],
+    "total_tokens": 2170,
+    "total_cost_usd": 0.018582,
+    "cost_per_link": 0.00232275,
+    "warnings": []
+  },
+  "call_details": {
+    "15": {
+      "id": 15,
+      "run_id": 9,
+      "stage": "extract",
+      "mode": "batched",
+      "model": "grok-4.3",
+      "prompt_tokens": 494,
+      "completion_tokens": 415,
+      "total_tokens": 909,
+      "cost_usd": 0.0077069999999999994,
+      "latency_ms": 9619,
+      "prompt": "Extract up to 12 of the most load-bearing claims from the text below. For each claim, include a short verbatim quote from the source that it is based on. Respond as JSON: {\"claims\": [{\"text\": \"<standalone claim>\", \"quote\": \"<verbatim snippet from source>\"}]}\n\nTEXT:\nSome members of the public worried that the Large Hadron Collider might create a black hole that could destroy the Earth. Physicists respond that if microscopic black holes could be produced at all, they would evaporate almost instantly via Hawking radiation, so they could not grow. Independently, they point out that cosmic rays with far higher energies than the LHC have been striking the Earth, the Moon, and other dense bodies for billions of years without creating dangerous black holes, which they argue shows the process is safe. Because these astronomical bodies still exist, the observed survival of the Moon and Sun under cosmic-ray bombardment supports the conclusion that collider energies pose no such risk. Taken together, the evaporation argument and the cosmic-ray argument are offered as mutually reinforcing reasons to reject the doomsday scenario.",
+      "response": "{\n  \"claims\": [\n    {\n      \"text\": \"Some members of the public worried that the Large Hadron Collider might create a black hole that could destroy the Earth.\",\n      \"quote\": \"Some members of the public worried that the Large Hadron Collider might create a black hole that could destroy the Earth.\"\n    },\n    {\n      \"text\": \"If microscopic black holes could be produced at the LHC, they would evaporate almost instantly via Hawking radiation.\",\n      \"quote\": \"if microscopic black holes could be produced at all, they would evaporate almost instantly via Hawking radiation\"\n    },\n    {\n      \"text\": \"Microscopic black holes produced at the LHC could not grow.\",\n      \"quote\": \"so they could not grow\"\n    },\n    {\n      \"text\": \"Cosmic rays with far higher energies than the LHC have struck the Earth, the Moon, and other dense bodies for billions of years.\",\n      \"quote\": \"cosmic rays with far higher energies than the LHC have been striking the Earth, the Moon, and other dense bodies for billions of years\"\n    },\n    {\n      \"text\": \"Cosmic rays have not created dangerous black holes despite billions of years of bombardment.\",\n      \"quote\": \"without creating dangerous black holes\"\n    },\n    {\n      \"text\": \"The lack of dangerous black holes from cosmic rays shows that the LHC process is safe.\",\n      \"quote\": \"which they argue shows the process is safe\"\n    },\n    {\n      \"text\": \"The observed survival of the Moon and Sun under cosmic-ray bombardment supports the conclusion that collider energies pose no risk.\",\n      \"quote\": \"the observed survival of the Moon and Sun under cosmic-ray bombardment supports the conclusion that collider energies pose no such risk\"\n    },\n    {\n      \"text\": \"The evaporation argument and the cosmic-ray argument are mutually reinforcing reasons to reject the doomsday scenario.\",\n      \"quote\": \"Taken together, the evaporation argument and the cosmic-ray argument are offered as mutually reinforcing reasons to reject the doomsday scenario\"\n    }\n  ]\n}"
+    },
+    "16": {
+      "id": 16,
+      "run_id": 9,
+      "stage": "resolve",
+      "mode": "batched",
+      "model": "grok-4.3",
+      "prompt_tokens": 670,
+      "completion_tokens": 591,
+      "total_tokens": 1261,
+      "cost_usd": 0.010875000000000001,
+      "latency_ms": 19136,
+      "prompt": "Here is a numbered list of claims. Identify every directed inference link among them. 'source' is the claim doing the supporting/rebutting/qualifying; 'target' is the claim it acts on. Use the numeric indices. For each link, isolate its assumption (the implicit warrant that makes the relation hold). Respond as JSON: {\"links\": [{\"source\": <int>, \"target\": <int>, \"type\": \"supports|rebuts|qualifies\", \"assumption\": \"<the implicit warrant that makes the relation hold>\", \"rationale\": \"<one sentence describing the relation>\", \"confidence\": <0-1>}]}\n\nCLAIMS:\n[0] Some members of the public worried that the Large Hadron Collider might create a black hole that could destroy the Earth.\n[1] If microscopic black holes could be produced at the LHC, they would evaporate almost instantly via Hawking radiation.\n[2] Microscopic black holes produced at the LHC could not grow.\n[3] Cosmic rays with far higher energies than the LHC have struck the Earth, the Moon, and other dense bodies for billions of years.\n[4] Cosmic rays have not created dangerous black holes despite billions of years of bombardment.\n[5] The lack of dangerous black holes from cosmic rays shows that the LHC process is safe.\n[6] The observed survival of the Moon and Sun under cosmic-ray bombardment supports the conclusion that collider energies pose no risk.\n[7] The evaporation argument and the cosmic-ray argument are mutually reinforcing reasons to reject the doomsday scenario.",
+      "response": "{\n  \"links\": [\n    {\"source\": 1, \"target\": 2, \"type\": \"supports\", \"assumption\": \"instant evaporation via Hawking radiation precludes any net growth or persistence of the black hole\", \"rationale\": \"[1] directly entails [2] because evaporation removes mass faster than it can be added\", \"confidence\": 0.9},\n    {\"source\": 1, \"target\": 0, \"type\": \"rebuts\", \"assumption\": \"a black hole that evaporates instantly cannot accumulate enough mass to destroy the Earth\", \"rationale\": \"[1] removes the mechanism by which the feared destruction in [0] could occur\", \"confidence\": 0.85},\n    {\"source\": 2, \"target\": 0, \"type\": \"rebuts\", \"assumption\": \"a non-growing microscopic black hole poses no existential threat to the Earth\", \"rationale\": \"[2] eliminates the growth step presupposed by the doomsday worry in [0]\", \"confidence\": 0.8},\n    {\"source\": 3, \"target\": 4, \"type\": \"supports\", \"assumption\": \"higher-energy impacts over geological time constitute a natural experiment that would have produced dangerous black holes if they were possible\", \"rationale\": \"[3] supplies the empirical premise from which [4] draws its negative conclusion\", \"confidence\": 0.9},\n    {\"source\": 4, \"target\": 5, \"type\": \"supports\", \"assumption\": \"the LHC collision environment is sufficiently similar to cosmic-ray events for the absence of harm in nature to transfer to the collider\", \"rationale\": \"[4] is offered as direct evidence for the safety claim in [5]\", \"confidence\": 0.85},\n    {\"source\": 4, \"target\": 6, \"type\": \"supports\", \"assumption\": \"survival of dense bodies under cosmic-ray flux implies safety at collider energies\", \"rationale\": \"[4] is the factual basis restated in [6] with explicit reference to the Moon and Sun\", \"confidence\": 0.85},\n    {\"source\": 5, \"target\": 7, \"type\": \"supports\", \"assumption\": \"the cosmic-ray safety argument is one of the two mutually reinforcing lines of evidence mentioned in [7]\", \"rationale\": \"[5] constitutes the cosmic-ray component that [7] says reinforces the evaporation argument\", \"confidence\": 0.8},\n    {\"source\": 1, \"target\": 7, \"type\": \"supports\", \"assumption\": \"the evaporation argument is one of the two mutually reinforcing lines of evidence mentioned in [7]\", \"rationale\": \"[1] is the evaporation argument that [7] pairs with the cosmic-ray argument\", \"confidence\": 0.8}\n  ]\n}"
+    }
+  }
+}

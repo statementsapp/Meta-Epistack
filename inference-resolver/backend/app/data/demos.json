@@ -1,0 +1,31 @@
+[
+  {
+    "id": "cern",
+    "title": "CERN black holes (clean support chains)",
+    "label": "LHC",
+    "input_kind": "text",
+    "text": "Some members of the public worried that the Large Hadron Collider might create a black hole that could destroy the Earth. Physicists respond that if microscopic black holes could be produced at all, they would evaporate almost instantly via Hawking radiation, so they could not grow. Independently, they point out that cosmic rays with far higher energies than the LHC have been striking the Earth, the Moon, and other dense bodies for billions of years without creating dangerous black holes, which they argue shows the process is safe. Because these astronomical bodies still exist, the observed survival of the Moon and Sun under cosmic-ray bombardment supports the conclusion that collider energies pose no such risk. Taken together, the evaporation argument and the cosmic-ray argument are offered as mutually reinforcing reasons to reject the doomsday scenario."
+  },
+  {
+    "id": "covid",
+    "title": "COVID origins (contested prose)",
+    "label": "COVID",
+    "input_kind": "text",
+    "text": "The origin of COVID-19 remains disputed between two main hypotheses. Proponents of zoonosis argue that the earliest known cases cluster tightly around the Huanan Seafood Market, which they take as strong evidence that the virus spilled over from animals sold there. Critics respond that this clustering may reflect where testing and surveillance were concentrated rather than where the outbreak began, so the market pattern is not decisive. Supporters of a lab-leak hypothesis note that the Wuhan Institute of Virology conducted research on bat coronaviruses nearby, which they argue raises the prior probability of an accidental escape. Others counter that proximity alone establishes opportunity, not occurrence, and that no direct evidence of an infected lab worker has been produced. A separate line of argument holds that the furin cleavage site in the virus is unusual, which some treat as a signature of engineering; virologists reply that similar features occur in natural coronaviruses, so the feature does not by itself favor a laboratory origin."
+  },
+  {
+    "id": "eggs",
+    "title": "Egg health (pre-structured claims, passthrough)",
+    "label": "Eggs",
+    "input_kind": "claims",
+    "claims": [
+      { "text": "Eating eggs raises blood LDL cholesterol in many people." },
+      { "text": "Higher LDL cholesterol increases cardiovascular disease risk." },
+      { "text": "Therefore eating eggs increases cardiovascular disease risk." },
+      { "text": "Large cohort studies find no clear association between moderate egg intake and cardiovascular events in the general population." },
+      { "text": "Dietary cholesterol has a smaller effect on blood cholesterol than saturated fat does." },
+      { "text": "The effect of eggs on cholesterol varies by individual, with hyper-responders affected more strongly." },
+      { "text": "Eggs are a low-cost source of high-quality protein and micronutrients." }
+    ]
+  }
+]

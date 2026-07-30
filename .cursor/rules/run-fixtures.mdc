@@ -1,0 +1,29 @@
+---
+description: Keep saved demo run fixtures in sync with the run-result data format
+globs: inference-resolver/**
+alwaysApply: false
+---
+
+# Saved run fixtures policy
+
+`inference-resolver/backend/app/data/fixtures/*.json` are **saved, realistic run
+results** for the demo case studies (`cern`, `covid`, `eggs`). The UI loads them
+when a case-study chip is clicked so the app can be tested with zero LLM calls.
+Each fixture contains the full run result plus every raw LLM exchange
+(`call_details`), all produced by real pipeline runs.
+
+## Required behavior
+
+1. **Regenerate on format change.** Whenever the run-result data format changes —
+   `RunResult` / `Claim` / `Link` / `CallSummary` / `StageSummary` in
+   `backend/app/models.py`, the artifact schema in `backend/app/main.py`, or the
+   fixture shape itself — regenerate all fixtures with realistic data:
+   start the backend with a valid `XAI_API_KEY`, then run
+   `python scripts/generate_fixtures.py` from `inference-resolver/backend/`.
+2. **Fixtures must stay realistic.** Never hand-edit fixtures into shapes the
+   live pipeline cannot produce. They are faithful captured outputs, not mocks.
+3. **If regeneration is impossible** (e.g. no API key available), mechanically
+   migrate the fixtures to the new schema so the UI keeps working, and tell the
+   user they should be regenerated with live runs.
+4. **New demos need fixtures.** When a demo is added to
+   `backend/app/data/demos.json`, generate its fixture in the same way.

@@ -1,0 +1,290 @@
+{
+  "demo_id": "covid",
+  "generated_at": "2026-07-30T20:59:03.421974+00:00",
+  "result": {
+    "run_id": 10,
+    "mode": "batched",
+    "model": "grok-4",
+    "input_kind": "text",
+    "claims": [
+      {
+        "id": "c0",
+        "text": "The origin of COVID-19 remains disputed between two main hypotheses.",
+        "span": {
+          "start": 0,
+          "end": 68
+        }
+      },
+      {
+        "id": "c1",
+        "text": "Proponents of zoonosis argue that the earliest known cases cluster tightly around the Huanan Seafood Market.",
+        "span": {
+          "start": 103,
+          "end": 176
+        }
+      },
+      {
+        "id": "c2",
+        "text": "Zoonosis proponents take the market clustering as strong evidence that the virus spilled over from animals sold there.",
+        "span": {
+          "start": 178,
+          "end": 264
+        }
+      },
+      {
+        "id": "c3",
+        "text": "Critics argue that the market clustering may reflect where testing and surveillance were concentrated rather than where the outbreak began.",
+        "span": {
+          "start": 287,
+          "end": 400
+        }
+      },
+      {
+        "id": "c4",
+        "text": "The market pattern is not decisive according to critics of the zoonosis hypothesis.",
+        "span": {
+          "start": 402,
+          "end": 439
+        }
+      },
+      {
+        "id": "c5",
+        "text": "The Wuhan Institute of Virology conducted research on bat coronaviruses nearby.",
+        "span": {
+          "start": 487,
+          "end": 565
+        }
+      },
+      {
+        "id": "c6",
+        "text": "Lab-leak supporters argue that WIV research raises the prior probability of an accidental escape.",
+        "span": {
+          "start": 567,
+          "end": 636
+        }
+      },
+      {
+        "id": "c7",
+        "text": "Proximity alone establishes opportunity, not occurrence, according to lab-leak critics.",
+        "span": {
+          "start": 658,
+          "end": 713
+        }
+      },
+      {
+        "id": "c8",
+        "text": "No direct evidence of an infected lab worker has been produced.",
+        "span": {
+          "start": 724,
+          "end": 786
+        }
+      },
+      {
+        "id": "c9",
+        "text": "The furin cleavage site in the virus is unusual.",
+        "span": {
+          "start": 827,
+          "end": 874
+        }
+      },
+      {
+        "id": "c10",
+        "text": "Some treat the furin cleavage site as a signature of engineering.",
+        "span": {
+          "start": 876,
+          "end": 922
+        }
+      },
+      {
+        "id": "c11",
+        "text": "Similar features occur in natural coronaviruses, so the furin cleavage site does not by itself favor a laboratory origin.",
+        "span": {
+          "start": 947,
+          "end": 1055
+        }
+      }
+    ],
+    "links": [
+      {
+        "id": "l_b0",
+        "source": "c1",
+        "target": "c2",
+        "type": "supports",
+        "rationale": "[1] supplies the empirical premise that [2] interprets as decisive evidence for zoonosis",
+        "assumption": "observed spatial clustering around the market is best explained by a local animal spillover rather than by surveillance patterns",
+        "confidence": 0.9,
+        "call_ids": [
+          18
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b1",
+        "source": "c3",
+        "target": "c2",
+        "type": "rebuts",
+        "rationale": "[3] offers an alternative causal explanation that undercuts the inference drawn in [2]",
+        "assumption": "differential testing intensity can produce apparent clustering without reflecting the true geographic origin",
+        "confidence": 0.85,
+        "call_ids": [
+          18
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b2",
+        "source": "c3",
+        "target": "c4",
+        "type": "supports",
+        "rationale": "[3] directly entails the non-decisiveness conclusion stated in [4]",
+        "assumption": "if clustering may be an artifact of surveillance, the pattern cannot be treated as decisive proof of origin",
+        "confidence": 0.9,
+        "call_ids": [
+          18
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b3",
+        "source": "c5",
+        "target": "c6",
+        "type": "supports",
+        "rationale": "[5] supplies the factual premise that [6] uses to raise the prior for lab leak",
+        "assumption": "conducting relevant coronavirus research at a nearby facility increases the baseline probability of a laboratory incident",
+        "confidence": 0.8,
+        "call_ids": [
+          18
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b4",
+        "source": "c7",
+        "target": "c6",
+        "type": "rebuts",
+        "rationale": "[7] distinguishes possibility from actuality, weakening the inferential step in [6]",
+        "assumption": "mere geographic proximity establishes opportunity but supplies no evidence that an actual escape occurred",
+        "confidence": 0.85,
+        "call_ids": [
+          18
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b5",
+        "source": "c8",
+        "target": "c7",
+        "type": "supports",
+        "rationale": "[8] provides a concrete instance of the opportunity-versus-occurrence gap asserted in [7]",
+        "assumption": "absence of direct evidence of an infected worker illustrates that opportunity has not been shown to have been realized",
+        "confidence": 0.75,
+        "call_ids": [
+          18
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b6",
+        "source": "c9",
+        "target": "c10",
+        "type": "supports",
+        "rationale": "[9] supplies the premise that [10] interprets as an engineering signature",
+        "assumption": "an unusual molecular feature is more likely to be the product of deliberate engineering than of natural evolution",
+        "confidence": 0.8,
+        "call_ids": [
+          18
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b7",
+        "source": "c11",
+        "target": "c10",
+        "type": "rebuts",
+        "rationale": "[11] undercuts the uniqueness premise required by the engineering inference in [10]",
+        "assumption": "natural occurrence of similar sites in wild coronaviruses removes the need to invoke laboratory manipulation",
+        "confidence": 0.9,
+        "call_ids": [
+          18
+        ],
+        "model": "grok-4.3"
+      }
+    ],
+    "calls": [
+      {
+        "id": 17,
+        "stage": "extract",
+        "mode": "batched",
+        "model": "grok-4.3",
+        "prompt_tokens": 529,
+        "completion_tokens": 468,
+        "total_tokens": 997,
+        "cost_usd": 0.008607,
+        "latency_ms": 13849
+      },
+      {
+        "id": 18,
+        "stage": "resolve",
+        "mode": "batched",
+        "model": "grok-4.3",
+        "prompt_tokens": 723,
+        "completion_tokens": 588,
+        "total_tokens": 1311,
+        "cost_usd": 0.010988999999999999,
+        "latency_ms": 11874
+      }
+    ],
+    "stage_summary": [
+      {
+        "stage": "extract",
+        "calls": 1,
+        "prompt_tokens": 529,
+        "completion_tokens": 468,
+        "total_tokens": 997,
+        "cost_usd": 0.008607
+      },
+      {
+        "stage": "resolve",
+        "calls": 1,
+        "prompt_tokens": 723,
+        "completion_tokens": 588,
+        "total_tokens": 1311,
+        "cost_usd": 0.010988999999999999
+      }
+    ],
+    "total_tokens": 2308,
+    "total_cost_usd": 0.019596,
+    "cost_per_link": 0.0024495,
+    "warnings": []
+  },
+  "call_details": {
+    "17": {
+      "id": 17,
+      "run_id": 10,
+      "stage": "extract",
+      "mode": "batched",
+      "model": "grok-4.3",
+      "prompt_tokens": 529,
+      "completion_tokens": 468,
+      "total_tokens": 997,
+      "cost_usd": 0.008607,
+      "latency_ms": 13849,
+      "prompt": "Extract up to 12 of the most load-bearing claims from the text below. For each claim, include a short verbatim quote from the source that it is based on. Respond as JSON: {\"claims\": [{\"text\": \"<standalone claim>\", \"quote\": \"<verbatim snippet from source>\"}]}\n\nTEXT:\nThe origin of COVID-19 remains disputed between two main hypotheses. Proponents of zoonosis argue that the earliest known cases cluster tightly around the Huanan Seafood Market, which they take as strong evidence that the virus spilled over from animals sold there. Critics respond that this clustering may reflect where testing and surveillance were concentrated rather than where the outbreak began, so the market pattern is not decisive. Supporters of a lab-leak hypothesis note that the Wuhan Institute of Virology conducted research on bat coronaviruses nearby, which they argue raises the prior probability of an accidental escape. Others counter that proximity alone establishes opportunity, not occurrence, and that no direct evidence of an infected lab worker has been produced. A separate line of argument holds that the furin cleavage site in the virus is unusual, which some treat as a signature of engineering; virologists reply that similar features occur in natural coronaviruses, so the feature does not by itself favor a laboratory origin.",
+      "response": "{\n  \"claims\": [\n    {\"text\": \"The origin of COVID-19 remains disputed between two main hypotheses.\", \"quote\": \"The origin of COVID-19 remains disputed between two main hypotheses.\"},\n    {\"text\": \"Proponents of zoonosis argue that the earliest known cases cluster tightly around the Huanan Seafood Market.\", \"quote\": \"the earliest known cases cluster tightly around the Huanan Seafood Market\"},\n    {\"text\": \"Zoonosis proponents take the market clustering as strong evidence that the virus spilled over from animals sold there.\", \"quote\": \"which they take as strong evidence that the virus spilled over from animals sold there\"},\n    {\"text\": \"Critics argue that the market clustering may reflect where testing and surveillance were concentrated rather than where the outbreak began.\", \"quote\": \"this clustering may reflect where testing and surveillance were concentrated rather than where the outbreak began\"},\n    {\"text\": \"The market pattern is not decisive according to critics of the zoonosis hypothesis.\", \"quote\": \"so the market pattern is not decisive\"},\n    {\"text\": \"The Wuhan Institute of Virology conducted research on bat coronaviruses nearby.\", \"quote\": \"the Wuhan Institute of Virology conducted research on bat coronaviruses nearby\"},\n    {\"text\": \"Lab-leak supporters argue that WIV research raises the prior probability of an accidental escape.\", \"quote\": \"which they argue raises the prior probability of an accidental escape\"},\n    {\"text\": \"Proximity alone establishes opportunity, not occurrence, according to lab-leak critics.\", \"quote\": \"proximity alone establishes opportunity, not occurrence\"},\n    {\"text\": \"No direct evidence of an infected lab worker has been produced.\", \"quote\": \"no direct evidence of an infected lab worker has been produced\"},\n    {\"text\": \"The furin cleavage site in the virus is unusual.\", \"quote\": \"the furin cleavage site in the virus is unusual\"},\n    {\"text\": \"Some treat the furin cleavage site as a signature of engineering.\", \"quote\": \"which some treat as a signature of engineering\"},\n    {\"text\": \"Similar features occur in natural coronaviruses, so the furin cleavage site does not by itself favor a laboratory origin.\", \"quote\": \"similar features occur in natural coronaviruses, so the feature does not by itself favor a laboratory origin\"}\n  ]\n}"
+    },
+    "18": {
+      "id": 18,
+      "run_id": 10,
+      "stage": "resolve",
+      "mode": "batched",
+      "model": "grok-4.3",
+      "prompt_tokens": 723,
+      "completion_tokens": 588,
+      "total_tokens": 1311,
+      "cost_usd": 0.010988999999999999,
+      "latency_ms": 11874,
+      "prompt": "Here is a numbered list of claims. Identify every directed inference link among them. 'source' is the claim doing the supporting/rebutting/qualifying; 'target' is the claim it acts on. Use the numeric indices. For each link, isolate its assumption (the implicit warrant that makes the relation hold). Respond as JSON: {\"links\": [{\"source\": <int>, \"target\": <int>, \"type\": \"supports|rebuts|qualifies\", \"assumption\": \"<the implicit warrant that makes the relation hold>\", \"rationale\": \"<one sentence describing the relation>\", \"confidence\": <0-1>}]}\n\nCLAIMS:\n[0] The origin of COVID-19 remains disputed between two main hypotheses.\n[1] Proponents of zoonosis argue that the earliest known cases cluster tightly around the Huanan Seafood Market.\n[2] Zoonosis proponents take the market clustering as strong evidence that the virus spilled over from animals sold there.\n[3] Critics argue that the market clustering may reflect where testing and surveillance were concentrated rather than where the outbreak began.\n[4] The market pattern is not decisive according to critics of the zoonosis hypothesis.\n[5] The Wuhan Institute of Virology conducted research on bat coronaviruses nearby.\n[6] Lab-leak supporters argue that WIV research raises the prior probability of an accidental escape.\n[7] Proximity alone establishes opportunity, not occurrence, according to lab-leak critics.\n[8] No direct evidence of an infected lab worker has been produced.\n[9] The furin cleavage site in the virus is unusual.\n[10] Some treat the furin cleavage site as a signature of engineering.\n[11] Similar features occur in natural coronaviruses, so the furin cleavage site does not by itself favor a laboratory origin.",
+      "response": "{\n  \"links\": [\n    {\"source\": 1, \"target\": 2, \"type\": \"supports\", \"assumption\": \"observed spatial clustering around the market is best explained by a local animal spillover rather than by surveillance patterns\", \"rationale\": \"[1] supplies the empirical premise that [2] interprets as decisive evidence for zoonosis\", \"confidence\": 0.9},\n    {\"source\": 3, \"target\": 2, \"type\": \"rebuts\", \"assumption\": \"differential testing intensity can produce apparent clustering without reflecting the true geographic origin\", \"rationale\": \"[3] offers an alternative causal explanation that undercuts the inference drawn in [2]\", \"confidence\": 0.85},\n    {\"source\": 3, \"target\": 4, \"type\": \"supports\", \"assumption\": \"if clustering may be an artifact of surveillance, the pattern cannot be treated as decisive proof of origin\", \"rationale\": \"[3] directly entails the non-decisiveness conclusion stated in [4]\", \"confidence\": 0.9},\n    {\"source\": 5, \"target\": 6, \"type\": \"supports\", \"assumption\": \"conducting relevant coronavirus research at a nearby facility increases the baseline probability of a laboratory incident\", \"rationale\": \"[5] supplies the factual premise that [6] uses to raise the prior for lab leak\", \"confidence\": 0.8},\n    {\"source\": 7, \"target\": 6, \"type\": \"rebuts\", \"assumption\": \"mere geographic proximity establishes opportunity but supplies no evidence that an actual escape occurred\", \"rationale\": \"[7] distinguishes possibility from actuality, weakening the inferential step in [6]\", \"confidence\": 0.85},\n    {\"source\": 8, \"target\": 7, \"type\": \"supports\", \"assumption\": \"absence of direct evidence of an infected worker illustrates that opportunity has not been shown to have been realized\", \"rationale\": \"[8] provides a concrete instance of the opportunity-versus-occurrence gap asserted in [7]\", \"confidence\": 0.75},\n    {\"source\": 9, \"target\": 10, \"type\": \"supports\", \"assumption\": \"an unusual molecular feature is more likely to be the product of deliberate engineering than of natural evolution\", \"rationale\": \"[9] supplies the premise that [10] interprets as an engineering signature\", \"confidence\": 0.8},\n    {\"source\": 11, \"target\": 10, \"type\": \"rebuts\", \"assumption\": \"natural occurrence of similar sites in wild coronaviruses removes the need to invoke laboratory manipulation\", \"rationale\": \"[11] undercuts the uniqueness premise required by the engineering inference in [10]\", \"confidence\": 0.9}\n  ]\n}"
+    }
+  }
+}

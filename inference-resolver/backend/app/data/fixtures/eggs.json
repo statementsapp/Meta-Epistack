@@ -1,0 +1,170 @@
+{
+  "demo_id": "eggs",
+  "generated_at": "2026-07-30T20:59:16.482784+00:00",
+  "result": {
+    "run_id": 11,
+    "mode": "batched",
+    "model": "grok-4",
+    "input_kind": "claims",
+    "claims": [
+      {
+        "id": "c0",
+        "text": "Eating eggs raises blood LDL cholesterol in many people.",
+        "span": null
+      },
+      {
+        "id": "c1",
+        "text": "Higher LDL cholesterol increases cardiovascular disease risk.",
+        "span": null
+      },
+      {
+        "id": "c2",
+        "text": "Therefore eating eggs increases cardiovascular disease risk.",
+        "span": null
+      },
+      {
+        "id": "c3",
+        "text": "Large cohort studies find no clear association between moderate egg intake and cardiovascular events in the general population.",
+        "span": null
+      },
+      {
+        "id": "c4",
+        "text": "Dietary cholesterol has a smaller effect on blood cholesterol than saturated fat does.",
+        "span": null
+      },
+      {
+        "id": "c5",
+        "text": "The effect of eggs on cholesterol varies by individual, with hyper-responders affected more strongly.",
+        "span": null
+      },
+      {
+        "id": "c6",
+        "text": "Eggs are a low-cost source of high-quality protein and micronutrients.",
+        "span": null
+      }
+    ],
+    "links": [
+      {
+        "id": "l_b0",
+        "source": "c0",
+        "target": "c2",
+        "type": "supports",
+        "rationale": "claim 2 presents the direct deductive consequence of combining 0 with 1",
+        "assumption": "a rise in LDL caused by eggs is large enough to transmit the CVD risk increase stated in claim 1",
+        "confidence": 0.9,
+        "call_ids": [
+          19
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b1",
+        "source": "c1",
+        "target": "c2",
+        "type": "supports",
+        "rationale": "claim 2 presents the direct deductive consequence of combining 0 with 1",
+        "assumption": "the LDL-mediated pathway is the operative causal route from eggs to CVD events",
+        "confidence": 0.9,
+        "call_ids": [
+          19
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b2",
+        "source": "c3",
+        "target": "c2",
+        "type": "rebuts",
+        "rationale": "claim 3 supplies population-level evidence that contradicts the risk conclusion drawn in 2",
+        "assumption": "large cohort studies are sensitive enough to detect any clinically meaningful effect that would follow from the LDL mechanism",
+        "confidence": 0.85,
+        "call_ids": [
+          19
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b3",
+        "source": "c4",
+        "target": "c0",
+        "type": "qualifies",
+        "rationale": "claim 4 supplies a comparative benchmark that limits how strongly 0 should be interpreted",
+        "assumption": "the magnitude of LDL change produced by eggs is best judged relative to the effect of saturated fat",
+        "confidence": 0.8,
+        "call_ids": [
+          19
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b4",
+        "source": "c5",
+        "target": "c0",
+        "type": "qualifies",
+        "rationale": "claim 5 introduces within-population heterogeneity that restricts the scope of 0",
+        "assumption": "the average directional claim in 0 does not hold uniformly across individuals",
+        "confidence": 0.85,
+        "call_ids": [
+          19
+        ],
+        "model": "grok-4.3"
+      },
+      {
+        "id": "l_b5",
+        "source": "c4",
+        "target": "c3",
+        "type": "supports",
+        "rationale": "claim 4 supplies a mechanistic reason that explains the null finding reported in 3",
+        "assumption": "a comparatively weak effect of dietary cholesterol on blood lipids would produce no detectable association with hard events",
+        "confidence": 0.75,
+        "call_ids": [
+          19
+        ],
+        "model": "grok-4.3"
+      }
+    ],
+    "calls": [
+      {
+        "id": 19,
+        "stage": "resolve",
+        "mode": "batched",
+        "model": "grok-4.3",
+        "prompt_tokens": 605,
+        "completion_tokens": 443,
+        "total_tokens": 1048,
+        "cost_usd": 0.008459999999999999,
+        "latency_ms": 13020
+      }
+    ],
+    "stage_summary": [
+      {
+        "stage": "resolve",
+        "calls": 1,
+        "prompt_tokens": 605,
+        "completion_tokens": 443,
+        "total_tokens": 1048,
+        "cost_usd": 0.008459999999999999
+      }
+    ],
+    "total_tokens": 1048,
+    "total_cost_usd": 0.008459999999999999,
+    "cost_per_link": 0.0014099999999999998,
+    "warnings": []
+  },
+  "call_details": {
+    "19": {
+      "id": 19,
+      "run_id": 11,
+      "stage": "resolve",
+      "mode": "batched",
+      "model": "grok-4.3",
+      "prompt_tokens": 605,
+      "completion_tokens": 443,
+      "total_tokens": 1048,
+      "cost_usd": 0.008459999999999999,
+      "latency_ms": 13020,
+      "prompt": "Here is a numbered list of claims. Identify every directed inference link among them. 'source' is the claim doing the supporting/rebutting/qualifying; 'target' is the claim it acts on. Use the numeric indices. For each link, isolate its assumption (the implicit warrant that makes the relation hold). Respond as JSON: {\"links\": [{\"source\": <int>, \"target\": <int>, \"type\": \"supports|rebuts|qualifies\", \"assumption\": \"<the implicit warrant that makes the relation hold>\", \"rationale\": \"<one sentence describing the relation>\", \"confidence\": <0-1>}]}\n\nCLAIMS:\n[0] Eating eggs raises blood LDL cholesterol in many people.\n[1] Higher LDL cholesterol increases cardiovascular disease risk.\n[2] Therefore eating eggs increases cardiovascular disease risk.\n[3] Large cohort studies find no clear association between moderate egg intake and cardiovascular events in the general population.\n[4] Dietary cholesterol has a smaller effect on blood cholesterol than saturated fat does.\n[5] The effect of eggs on cholesterol varies by individual, with hyper-responders affected more strongly.\n[6] Eggs are a low-cost source of high-quality protein and micronutrients.",
+      "response": "{\n  \"links\": [\n    {\"source\": 0, \"target\": 2, \"type\": \"supports\", \"assumption\": \"a rise in LDL caused by eggs is large enough to transmit the CVD risk increase stated in claim 1\", \"rationale\": \"claim 2 presents the direct deductive consequence of combining 0 with 1\", \"confidence\": 0.9},\n    {\"source\": 1, \"target\": 2, \"type\": \"supports\", \"assumption\": \"the LDL-mediated pathway is the operative causal route from eggs to CVD events\", \"rationale\": \"claim 2 presents the direct deductive consequence of combining 0 with 1\", \"confidence\": 0.9},\n    {\"source\": 3, \"target\": 2, \"type\": \"rebuts\", \"assumption\": \"large cohort studies are sensitive enough to detect any clinically meaningful effect that would follow from the LDL mechanism\", \"rationale\": \"claim 3 supplies population-level evidence that contradicts the risk conclusion drawn in 2\", \"confidence\": 0.85},\n    {\"source\": 4, \"target\": 0, \"type\": \"qualifies\", \"assumption\": \"the magnitude of LDL change produced by eggs is best judged relative to the effect of saturated fat\", \"rationale\": \"claim 4 supplies a comparative benchmark that limits how strongly 0 should be interpreted\", \"confidence\": 0.8},\n    {\"source\": 5, \"target\": 0, \"type\": \"qualifies\", \"assumption\": \"the average directional claim in 0 does not hold uniformly across individuals\", \"rationale\": \"claim 5 introduces within-population heterogeneity that restricts the scope of 0\", \"confidence\": 0.85},\n    {\"source\": 4, \"target\": 3, \"type\": \"supports\", \"assumption\": \"a comparatively weak effect of dietary cholesterol on blood lipids would produce no detectable association with hard events\", \"rationale\": \"claim 4 supplies a mechanistic reason that explains the null finding reported in 3\", \"confidence\": 0.75}\n  ]\n}"
+    }
+  }
+}
