@@ -75,7 +75,7 @@ export function InputPanel() {
         />
       ) : (
         <FitTextarea
-          placeholder='["claim one", "claim two"] or [{"text": "..."}] — passed through with zero extract tokens.'
+          placeholder='["claim one", "claim two"] or [{"text": "..."}]. Passed through with zero extract tokens.'
           value={s.claimsJson}
           onChange={(e) => s.setField("claimsJson", e.target.value)}
         />

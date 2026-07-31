@@ -59,13 +59,13 @@ port 8000.
 ## Saved demo results (no API calls)
 
 Clicking a case-study chip (LHC / COVID / Eggs) loads a **saved run result**
-from `backend/app/data/fixtures/` — the full graph, telemetry, and raw LLM
-exchanges from a real prior run — without spending any tokens. Press
+from `backend/app/data/fixtures/`: the full graph, telemetry, and raw LLM
+exchanges from a real prior run, without spending any tokens. Press
 **Resolve** to run live instead.
 
 Fixtures are regenerated with `python scripts/generate_fixtures.py` (backend
 running, key set). Policy: they must be refreshed whenever the run-result data
-format changes — see `.cursor/rules/run-fixtures.mdc`.
+format changes. See `.cursor/rules/run-fixtures.mdc`.
 
 ## Demo walkthrough
 
@@ -73,11 +73,11 @@ format changes — see `.cursor/rules/run-fixtures.mdc`.
    Press **Resolve**. You get a claim graph where rebuttals (red) point at the
    claims they answer and supports (green) point at what they back.
 2. Click a **red edge**: the inspector shows which claim rebuts which, the model's
-   one-line rationale, and — via "Show raw LLM exchange" — the exact prompt and
+   one-line rationale and, via "Show raw LLM exchange," the exact prompt and
    JSON response, with token count.
 3. Press **Compare modes**. It reruns the same claims in `pairwise` mode. The
    dashboard's comparison chart shows pairwise spending many more tokens (one call
-   per pair) for a similar graph — the core cost/quality tradeoff.
+   per pair) for a similar graph. This is the core cost/quality tradeoff.
 4. Try the **Egg health** demo: it is a pre-structured claim list, so the extract
    stage contributes zero tokens (visible in "Tokens by stage") and the resolver
    finds the support chain into the "eggs increase cardiovascular risk" claim and
@@ -98,6 +98,33 @@ Model list (UI dropdown), the claim cap (`max_claims`, default 12, which bounds
 pairwise cost), and the cost-estimate price table live in
 [backend/app/config.py](backend/app/config.py). The price table is estimates for
 telemetry; adjust it to match current xAI pricing.
+
+## UI conventions
+
+- Keep content scrollable when it overflows, but do not display vertical
+  scrollbar chrome. Apply this consistently to new panels and nested regions.
+- Do not use em dashes in user-facing copy or project documentation. Prefer a
+  period, comma, colon, or parentheses.
+
+## Criteria run log
+
+Each Criteria Designer run is persisted for issue reports:
+
+- Per-run JSON: `backend/app/data/criteria_runs/{run_id}.json` (prompt, design,
+  answer)
+- Append-only index: `backend/app/data/criteria_run_log.jsonl`
+- Also stored on the SQLite run artifact
+
+Cite a `run_id` (shown in the left rail) when flagging a bad criteria or answer
+output. List recent runs via `GET /api/criteria/runs`; fetch one with
+`GET /api/criteria/runs/{run_id}`.
+
+Architecture snapshot of the Criteria Designer at the Charlie Kirk stress case:
+[docs/criteria-designer-snapshot-2026-07-30.md](docs/criteria-designer-snapshot-2026-07-30.md).
+
+Settled epistemic policy for the Criteria Designer (runtime attitude; not an
+FLF competition-doc override):
+[docs/EPISTEMOLOGY.md](docs/EPISTEMOLOGY.md).
 
 ## How it is built to expand
 

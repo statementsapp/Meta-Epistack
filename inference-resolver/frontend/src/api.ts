@@ -8,6 +8,11 @@ import type {
   RunMode,
   RunResult,
 } from "./types";
+import type {
+  AnswerResult,
+  CriteriaObject,
+  DesignResult,
+} from "./criteria/types";
 
 async function jsonOrThrow(res: Response) {
   if (!res.ok) {
@@ -37,6 +42,23 @@ export const api = {
   demos: (): Promise<Demo[]> => fetch("/api/demos").then(jsonOrThrow),
   run: (payload: RunPayload): Promise<RunResult> =>
     fetch("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(jsonOrThrow),
+  designCriteria: (prompt: string, model?: string): Promise<DesignResult> =>
+    fetch("/api/criteria/design", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, model }),
+    }).then(jsonOrThrow),
+  answerCriteria: (payload: {
+    prompt: string;
+    criteria: CriteriaObject;
+    model?: string;
+    run_id: number;
+  }): Promise<AnswerResult> =>
+    fetch("/api/criteria/answer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

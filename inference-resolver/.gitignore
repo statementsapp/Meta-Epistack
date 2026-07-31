@@ -3,6 +3,8 @@ backend/.venv/
 backend/**/__pycache__/
 backend/app/ledger.db
 backend/.env
+backend/app/data/criteria_runs/
+backend/app/data/criteria_run_log.jsonl
 
 # Node
 frontend/node_modules/

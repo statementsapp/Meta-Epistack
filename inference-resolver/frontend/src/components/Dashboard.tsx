@@ -107,7 +107,7 @@ export function Dashboard({
         <div className="stat">
           <div className="label">Cost / link</div>
           <div className="value">
-            {result.cost_per_link != null ? fmtCost(result.cost_per_link) : "—"}
+            {result.cost_per_link != null ? fmtCost(result.cost_per_link) : "N/A"}
           </div>
         </div>
       </div>

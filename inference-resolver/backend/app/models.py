@@ -78,3 +78,152 @@ class RunResult(BaseModel):
     total_cost_usd: float
     cost_per_link: Optional[float] = None
     warnings: list[str] = Field(default_factory=list)
+
+
+# —— Epistemic Criteria Designer ——
+
+PortId = Literal[
+    "canonical_form",
+    "theorem",
+    "observation_map",
+    "layer_separation",
+    "revision_protocol",
+    "meta_exhaustiveness",
+    "source_class_ranking",
+]
+
+InquiryType = Literal[
+    "factual_closed",
+    "causal_mechanistic",
+    "comparative_evaluative",
+    "historical_reconstruction",
+    "predictive_constrained",
+    "definitional_taxonomic",
+]
+
+RejectedType = Literal[
+    "preference_aesthetic",
+    "open_future_prediction",
+    "pure_normative",
+    "non_partitionable",
+    "pure_personalization",
+    "empty_prompt",
+]
+
+LogicFragment = Literal[
+    "classical_propositional",
+    "first_order",
+    "temporal_bounded",
+    "modal_epistemic",
+    "comparative_order",
+]
+
+
+class CriteriaDesignRequest(BaseModel):
+    prompt: str
+    model: Optional[str] = None
+
+
+class SurfaceFeatures(BaseModel):
+    tense: Literal["past", "present", "future", "mixed", "untensed"] = "untensed"
+    hasQuantifiers: bool = False
+    hasModals: bool = False
+    hasEvaluativeLanguage: bool = False
+    closedness: Literal["closed", "semi_open", "open"] = "semi_open"
+
+
+class AnswerhoodSketch(BaseModel):
+    """What the prompt itself implies as a satisfactory answer (erotetic excavation)."""
+
+    direct_answer: str = ""
+    partial_answer: str = ""
+    presupposition_challenge: str = ""
+    partition_licensed: bool = False
+    open_answerhood: str = ""
+
+
+class Presupposition(BaseModel):
+    text: str
+    status: Literal["accepted", "contested", "challengeable"] = "accepted"
+
+
+class CriteriaObject(BaseModel):
+    prompt_hash: str
+    inquiry_type: str
+    logic_fragment: str
+    required_ports: list[str]
+    port_parameters: dict = Field(default_factory=dict)
+    port_applicability: dict[str, str] = Field(default_factory=dict)
+    # erotetic | stack | pragmatic for each required port
+    port_layers: dict[str, str] = Field(default_factory=dict)
+    answerhood: AnswerhoodSketch = Field(default_factory=AnswerhoodSketch)
+    presuppositions: list[Presupposition] = Field(default_factory=list)
+    prompt_fixes: str = ""
+    prompt_leaves_open: str = ""
+    version: str
+    completeness_template: str = ""
+    surface_features: SurfaceFeatures = Field(default_factory=SurfaceFeatures)
+
+
+class BouncerAdmitted(BaseModel):
+    admitted: Literal[True] = True
+    inquiry_type: str
+    features: SurfaceFeatures
+    note: str = ""
+
+
+class BouncerRejected(BaseModel):
+    admitted: Literal[False] = False
+    rejected_type: str
+    label: str
+    message: str
+    features: SurfaceFeatures = Field(default_factory=SurfaceFeatures)
+
+
+class CriteriaDesignResult(BaseModel):
+    run_id: int
+    model: str
+    bouncer: dict  # admitted | rejected shape (kept loose for frontend union)
+    criteria: Optional[CriteriaObject] = None
+    calls: list[CallSummary] = Field(default_factory=list)
+    total_tokens: int = 0
+    total_cost_usd: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
+
+
+class CriteriaAnswerRequest(BaseModel):
+    prompt: str
+    criteria: CriteriaObject
+    model: Optional[str] = None
+    run_id: int
+
+
+class AnswerSection(BaseModel):
+    port: str
+    title: str
+    body: str = ""
+    items: list[str] = Field(default_factory=list)
+
+
+class AnswerAssertion(BaseModel):
+    statement: str
+    basis: str = ""
+    defeaters: list[str] = Field(default_factory=list)
+
+
+class CriteriaAnswer(BaseModel):
+    headline: str
+    summary: str = ""
+    sections: list[AnswerSection] = Field(default_factory=list)
+    assertions: list[AnswerAssertion] = Field(default_factory=list)
+    residual_uncertainty: list[str] = Field(default_factory=list)
+
+
+class CriteriaAnswerResult(BaseModel):
+    run_id: int
+    model: str
+    answer: CriteriaAnswer
+    calls: list[CallSummary] = Field(default_factory=list)
+    total_tokens: int = 0
+    total_cost_usd: float = 0.0
+    warnings: list[str] = Field(default_factory=list)

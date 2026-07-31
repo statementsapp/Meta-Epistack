@@ -26,6 +26,18 @@ body {
   font-size: 14px;
 }
 
+/* Scrolling stays functional, but vertical scrollbar chrome is never shown. */
+.app,
+.app * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.app::-webkit-scrollbar,
+.app *::-webkit-scrollbar {
+  width: 0;
+}
+
 .app {
   display: grid;
   grid-template-columns: 340px 1fr 220px;
@@ -347,4 +359,298 @@ a.link-btn {
   cursor: pointer;
   font-size: 12px;
   text-decoration: underline;
+}
+
+/* View toggle / Criteria Designer */
+
+.app.view-criteria {
+  grid-template-columns: 1fr;
+}
+
+.topbar-toggle {
+  margin: 0 0 0 8px;
+}
+
+.criteria-view {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.criteria-layout {
+  display: grid;
+  grid-template-columns: 310px 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.criteria-input {
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.criteria-lead {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.criteria-textarea {
+  min-height: 140px;
+  resize: vertical;
+  overflow: auto;
+  margin-bottom: 10px;
+}
+
+.criteria-main {
+  padding: 14px 18px;
+  min-height: 0;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 0%, #14171e, #0d0f13);
+}
+
+.criteria-panel-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+}
+
+.criteria-panel-body.technical-open {
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: 0;
+}
+
+.criteria-readable {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 12px;
+}
+
+.criteria-readable-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.criteria-technical {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+
+.criteria-technical-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.criteria-technical-toggle {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.criteria-technical-toggle:hover {
+  color: var(--text);
+}
+
+.logic-disclosure summary,
+.technical-disclosure summary {
+  cursor: pointer;
+}
+
+.logic-disclosure summary::marker,
+.technical-disclosure summary::marker {
+  color: var(--accent);
+}
+
+.disclosure-body {
+  margin-top: 8px;
+}
+
+.technical-disclosure {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.technical-disclosure summary {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.technical-disclosure .mono {
+  margin-top: 8px;
+}
+
+/* The technical column owns scrolling; avoid a second visible JSON scrollbar. */
+.criteria-technical .mono {
+  max-height: none;
+  overflow: visible;
+}
+
+.criteria-run-hash {
+  grid-column: 1 / -1;
+}
+
+.criteria-run-hash .mono {
+  max-height: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+  font-size: 12px;
+}
+
+.criteria-prose {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.criteria-statements {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.criteria-statements li {
+  padding: 8px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--panel-alt);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.criteria-statements strong {
+  color: var(--text);
+}
+
+.criteria-layer-tag {
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+.criteria-log-hint {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.answer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.answer-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.62);
+  cursor: pointer;
+}
+
+.answer-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: min(720px, 100%);
+  max-height: min(84vh, 900px);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+
+.answer-overlay-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.answer-overlay-close {
+  width: auto;
+  padding: 6px 12px;
+}
+
+.answer-overlay-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.answer-overlay-status {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.answer-headline {
+  margin: 4px 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.answer-assertions {
+  display: grid;
+  gap: 8px;
+}
+
+.answer-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.answer-overlay-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
 }

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import db
+from . import criteria_log, db
 from .config import DATA_DIR, settings
 from .llm import LLMError, MissingKeyError, client
 
@@ -19,10 +19,15 @@ from .pipeline import resolve as _resolve  # noqa: F401
 from .models import (
     CallSummary,
     Claim,
+    CriteriaAnswerRequest,
+    CriteriaAnswerResult,
+    CriteriaDesignRequest,
+    CriteriaDesignResult,
     RunRequest,
     RunResult,
     StageSummary,
 )
+from .pipeline import criteria as criteria_design
 
 ARTIFACT_SCHEMA_VERSION = 1
 
@@ -164,6 +169,51 @@ async def run(req: RunRequest) -> RunResult:
     result = _build_result(run_id, state, req.mode, model)
     db.save_artifact(run_id, _artifact_json(result, doc_hash))
     return result
+
+
+@app.post("/api/criteria/design", response_model=CriteriaDesignResult)
+async def design_criteria(req: CriteriaDesignRequest) -> CriteriaDesignResult:
+    """Bouncer + prompt-dependent criteria via LLM (logged like other stages)."""
+    model = req.model or settings.default_model
+    try:
+        return await criteria_design.design_criteria(req.prompt, model)
+    except MissingKeyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@app.post("/api/criteria/answer", response_model=CriteriaAnswerResult)
+async def answer_criteria(req: CriteriaAnswerRequest) -> CriteriaAnswerResult:
+    """Draft an answer that tries to satisfy an admitted criteria object."""
+    model = req.model or settings.default_model
+    if db.get_run(req.run_id) is None:
+        raise HTTPException(404, "Run not found.")
+    try:
+        return await criteria_design.answer_to_criteria(
+            req.prompt,
+            req.criteria,
+            model,
+            req.run_id,
+        )
+    except MissingKeyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@app.get("/api/criteria/runs")
+async def criteria_runs(limit: int = 40) -> list[dict]:
+    """Recent criteria runs from the on-disk log (for issue reports)."""
+    return criteria_log.list_recent(limit=max(1, min(limit, 100)))
+
+
+@app.get("/api/criteria/runs/{run_id}")
+async def criteria_run(run_id: int) -> dict:
+    payload = criteria_log.load_run(run_id)
+    if payload is None:
+        raise HTTPException(404, f"No criteria log for run {run_id}.")
+    return payload
 
 
 def _artifact_json(result: RunResult, doc_hash: str) -> str:
