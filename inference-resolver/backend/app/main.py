@@ -23,6 +23,10 @@ from .models import (
     CriteriaAnswerResult,
     CriteriaDesignRequest,
     CriteriaDesignResult,
+    EvidenceNeedRequest,
+    EvidenceNeedResult,
+    GatherRequest,
+    GatherResult,
     RunRequest,
     RunResult,
     StageSummary,
@@ -183,6 +187,45 @@ async def design_criteria(req: CriteriaDesignRequest) -> CriteriaDesignResult:
         raise HTTPException(502, str(exc)) from exc
 
 
+@app.post("/api/criteria/evidence-needs", response_model=EvidenceNeedResult)
+async def plan_evidence_needs(req: EvidenceNeedRequest) -> EvidenceNeedResult:
+    """Derive an evidence-need plan from audited criteria (no retrieval yet)."""
+    model = req.model or settings.default_model
+    if db.get_run(req.run_id) is None:
+        raise HTTPException(404, "Run not found.")
+    try:
+        return await criteria_design.plan_evidence_needs(
+            req.prompt,
+            req.criteria,
+            model,
+            req.run_id,
+        )
+    except MissingKeyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@app.post("/api/criteria/gather", response_model=GatherResult)
+async def gather_evidence(req: GatherRequest) -> GatherResult:
+    """Fill evidence needs via web_search; return provenance-bearing finds."""
+    model = req.model or settings.default_model
+    if db.get_run(req.run_id) is None:
+        raise HTTPException(404, "Run not found.")
+    try:
+        return await criteria_design.gather_evidence(
+            req.prompt,
+            req.criteria,
+            req.evidence_needs,
+            model,
+            req.run_id,
+        )
+    except MissingKeyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
 @app.post("/api/criteria/answer", response_model=CriteriaAnswerResult)
 async def answer_criteria(req: CriteriaAnswerRequest) -> CriteriaAnswerResult:
     """Draft an answer that tries to satisfy an admitted criteria object."""
@@ -195,6 +238,8 @@ async def answer_criteria(req: CriteriaAnswerRequest) -> CriteriaAnswerResult:
             req.criteria,
             model,
             req.run_id,
+            evidence_needs=req.evidence_needs,
+            gather=req.gather,
         )
     except MissingKeyError as exc:
         raise HTTPException(400, str(exc)) from exc

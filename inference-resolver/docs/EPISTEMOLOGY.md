@@ -6,6 +6,10 @@ It governs runtime prompts and schema interpretation. It does **not** amend the
 FLF competition mirrors under `docs/competition/`; those remain the repo-wide
 canonical constraints for product/competition attitude.
 
+Build order (prompt → criteria object → forward stages) is settled in
+[`CRITERIA_FIRST.md`](CRITERIA_FIRST.md); keep attitude here and direction of
+fit there aligned when both change.
+
 Conflict rule: if this file and the runtime prompts in
 `backend/app/pipeline/criteria.py` diverge, **update both together**. Prefer
 this file as the human-readable source of settled policy and keep prompts as
@@ -137,7 +141,7 @@ The schema is fixed; only the required subset and parameters vary.
 | `theorem` | Genuine derivational constraint under declared logic |
 | `observation_map` | Observable settlement conditions for assertions (not auto-required for empirical prompts; does not by itself prove forecasts) |
 | `layer_separation` | Separate intersubjective from agent-relative content when both appear |
-| `revision_protocol` | Defeaters/update rules for non-trivial answer assertions |
+| `revision_protocol` | Defeaters/update rules for non-trivial answer assertions. Acceptance includes **salience weighting**: a good attachment leads with high-salience defeaters (near-term / high-base-rate under the prompt’s horizon); rare or long-horizon defeaters may be named but only briefly, in proportion to rarity—even when that short note slightly diverts flow. Equal listing is not equal weight. Exotic or remote defeaters must not dominate what counts as satisfying this port. |
 | `meta_exhaustiveness` | Structural coverage when completeness is meaningful; no fake exhaustiveness |
 | `source_class_ranking` | Answer must state how it weights distinct evidence classes it relies on |
 
@@ -159,7 +163,9 @@ Given prompt + criteria (including answerhood):
 7. Partial answers or presupposition challenges only when criteria mark them
    in-bounds.
 
-Ports are shape. Judgment supplies content.
+Ports are shape. Judgment supplies content. When `revision_protocol` is
+required, its attachment must meet that port’s acceptance conditions
+(including salience weighting of defeaters).
 
 ---
 

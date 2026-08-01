@@ -23,14 +23,14 @@ function StageChart({ result }: { result: RunResult }) {
   return (
     <ResponsiveContainer width="100%" height={180}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#2a2f3a" />
-        <XAxis dataKey="stage" stroke="#9aa1b0" fontSize={11} />
-        <YAxis stroke="#9aa1b0" fontSize={11} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#354560" />
+        <XAxis dataKey="stage" stroke="#a4b0c4" fontSize={11} />
+        <YAxis stroke="#a4b0c4" fontSize={11} />
         <Tooltip
-          contentStyle={{ background: "#1e222b", border: "1px solid #2a2f3a" }}
+          contentStyle={{ background: "#243044", border: "1px solid #354560" }}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
-        <Bar dataKey="prompt" stackId="a" fill="#5b8cff" name="prompt tok" />
+        <Bar dataKey="prompt" stackId="a" fill="#7aa6ff" name="prompt tok" />
         <Bar dataKey="completion" stackId="a" fill="#3fb950" name="completion tok" />
       </BarChart>
     </ResponsiveContainer>
@@ -43,15 +43,15 @@ function ComparisonChart({ a, b }: { a: RunResult; b: RunResult }) {
     tokens: r.total_tokens,
     cost: r.total_cost_usd,
   }));
-  const colors = ["#5b8cff", "#d29922"];
+  const colors = ["#7aa6ff", "#d29922"];
   return (
     <ResponsiveContainer width="100%" height={170}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#2a2f3a" />
-        <XAxis dataKey="mode" stroke="#9aa1b0" fontSize={11} />
-        <YAxis stroke="#9aa1b0" fontSize={11} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#354560" />
+        <XAxis dataKey="mode" stroke="#a4b0c4" fontSize={11} />
+        <YAxis stroke="#a4b0c4" fontSize={11} />
         <Tooltip
-          contentStyle={{ background: "#1e222b", border: "1px solid #2a2f3a" }}
+          contentStyle={{ background: "#243044", border: "1px solid #354560" }}
         />
         <Bar dataKey="tokens" name="total tokens">
           {data.map((_, i) => (

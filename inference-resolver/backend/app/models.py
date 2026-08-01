@@ -191,11 +191,112 @@ class CriteriaDesignResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class EvidenceNeedItem(BaseModel):
+    """One planned retrieval/settlement need derived from audited criteria."""
+
+    kind: Literal["scope", "settlement", "defeater", "class_hint"]
+    statement: str
+    salience: Literal["high", "medium", "low"] = "medium"
+    derived_from: list[str] = Field(default_factory=list)
+
+
+class EvidenceNonNeed(BaseModel):
+    """Required port that shapes the answer but does not authorize retrieval."""
+
+    port: str
+    reason: str
+
+
+class EvidenceNeedPlan(BaseModel):
+    """Criteria-derived plan of what evidence would settle or defeat the answer.
+
+    Not a search API and not port-keyed retrieval. Gather fills these needs;
+    answer ports remain answer-facing.
+    """
+
+    version: str = "evidence-needs/v1"
+    scope: str = ""
+    settlement_checks: list[EvidenceNeedItem] = Field(default_factory=list)
+    defeater_hunts: list[EvidenceNeedItem] = Field(default_factory=list)
+    class_hints: list[EvidenceNeedItem] = Field(default_factory=list)
+    non_needs: list[EvidenceNonNeed] = Field(default_factory=list)
+    retrieval_status: Literal[
+        "planned_only", "gathered", "gather_failed", "skipped"
+    ] = "planned_only"
+    note: str = (
+        "No retrieval yet. These needs are derived from the audited criteria "
+        "for a later gather stage."
+    )
+
+
+class EvidenceNeedRequest(BaseModel):
+    prompt: str
+    criteria: CriteriaObject
+    model: Optional[str] = None
+    run_id: int
+
+
+class EvidenceNeedResult(BaseModel):
+    run_id: int
+    model: str
+    evidence_needs: EvidenceNeedPlan
+    calls: list[CallSummary] = Field(default_factory=list)
+    total_tokens: int = 0
+    total_cost_usd: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
+
+
+class GatheredFind(BaseModel):
+    """Provenance-bearing claim atom from gather (who said what, with source)."""
+
+    id: str
+    need_kind: Literal["scope", "settlement", "defeater", "class_hint"]
+    need_statement: str = ""
+    claim: str
+    source_title: str = ""
+    source_url: str = ""
+    source_publisher: str = ""
+    quoted_or_paraphrase: str = ""
+    published_at: str = ""
+    confidence_note: str = ""
+    salience: Literal["high", "medium", "low"] = "medium"
+
+
+class GatherPacket(BaseModel):
+    version: str = "gather/v1"
+    finds: list[GatheredFind] = Field(default_factory=list)
+    unmet_needs: list[str] = Field(default_factory=list)
+    citations: list[str] = Field(default_factory=list)
+    retrieval_status: Literal["gathered", "gather_failed", "skipped"] = "skipped"
+    note: str = ""
+
+
+class GatherRequest(BaseModel):
+    prompt: str
+    criteria: CriteriaObject
+    evidence_needs: EvidenceNeedPlan
+    model: Optional[str] = None
+    run_id: int
+
+
+class GatherResult(BaseModel):
+    run_id: int
+    model: str
+    gather: GatherPacket
+    evidence_needs: EvidenceNeedPlan
+    calls: list[CallSummary] = Field(default_factory=list)
+    total_tokens: int = 0
+    total_cost_usd: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
+
+
 class CriteriaAnswerRequest(BaseModel):
     prompt: str
     criteria: CriteriaObject
     model: Optional[str] = None
     run_id: int
+    evidence_needs: Optional[EvidenceNeedPlan] = None
+    gather: Optional[GatherPacket] = None
 
 
 class AnswerSection(BaseModel):
@@ -223,6 +324,8 @@ class CriteriaAnswerResult(BaseModel):
     run_id: int
     model: str
     answer: CriteriaAnswer
+    evidence_needs: Optional[EvidenceNeedPlan] = None
+    gather: Optional[GatherPacket] = None
     calls: list[CallSummary] = Field(default_factory=list)
     total_tokens: int = 0
     total_cost_usd: float = 0.0

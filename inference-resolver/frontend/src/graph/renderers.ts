@@ -124,7 +124,7 @@ export function renderNode(
   ctx.fillText(node.id, node.x!, top + idHeight / 2);
 
   ctx.font = `${fontSize}px "Segoe UI", sans-serif`;
-  ctx.fillStyle = "#171a21";
+  ctx.fillStyle = "#1c2433";
   let y = top + idHeight + lineHeight / 2;
   for (const line of lines) {
     ctx.fillText(line, node.x!, y);

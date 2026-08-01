@@ -111,9 +111,14 @@ telemetry; adjust it to match current xAI pricing.
 Each Criteria Designer run is persisted for issue reports:
 
 - Per-run JSON: `backend/app/data/criteria_runs/{run_id}.json` (prompt, design,
-  answer)
+  evidence_needs, gather, answer)
 - Append-only index: `backend/app/data/criteria_run_log.jsonl`
 - Also stored on the SQLite run artifact
+
+Admitted flow: design → `POST /api/criteria/evidence-needs` →
+`POST /api/criteria/gather` → answer. Needs are derived from audited criteria
+(`evidence-needs/v1`); gather fills them via xAI `web_search` into
+provenance-bearing finds (`gather/v1`).
 
 Cite a `run_id` (shown in the left rail) when flagging a bad criteria or answer
 output. List recent runs via `GET /api/criteria/runs`; fetch one with
@@ -125,6 +130,9 @@ Architecture snapshot of the Criteria Designer at the Charlie Kirk stress case:
 Settled epistemic policy for the Criteria Designer (runtime attitude; not an
 FLF competition-doc override):
 [docs/EPISTEMOLOGY.md](docs/EPISTEMOLOGY.md).
+
+Build order (always criteria from the prompt, then forward from that object):
+[docs/CRITERIA_FIRST.md](docs/CRITERIA_FIRST.md).
 
 ## How it is built to expand
 

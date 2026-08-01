@@ -20,6 +20,13 @@ from ..models import (
     CriteriaAnswerResult,
     CriteriaDesignResult,
     CriteriaObject,
+    EvidenceNeedItem,
+    EvidenceNeedPlan,
+    EvidenceNeedResult,
+    EvidenceNonNeed,
+    GatheredFind,
+    GatherPacket,
+    GatherResult,
     Presupposition,
     SurfaceFeatures,
 )
@@ -27,6 +34,26 @@ from .. import criteria_log, db
 from ..config import cost_for
 
 CRITERIA_VERSION = "criteria-schema/v2"
+EVIDENCE_NEEDS_VERSION = "evidence-needs/v1"
+GATHER_VERSION = "gather/v1"
+
+# Ports that may authorize retrieval/settlement planning (not the ports themselves
+# as search endpoints). Answer-form-only ports are listed as non_needs.
+_NEED_AUTHORIZING_PORTS = frozenset(
+    {
+        "canonical_form",
+        "observation_map",
+        "revision_protocol",
+        "source_class_ranking",
+    }
+)
+
+_NON_NEED_REASONS: dict[str, str] = {
+    "theorem": "Shapes derivational answer form; does not authorize retrieval.",
+    "layer_separation": "Shapes how the answer separates layers; not a gather target.",
+    "meta_exhaustiveness": "Shapes structural coverage in the answer; not a gather target.",
+    "canonical_form": "Scopes the inquiry; listed under scope, not as a fetch endpoint.",
+}
 
 PORT_IDS = [
     "canonical_form",
@@ -70,7 +97,14 @@ RULES
   syntactically separate when both appear.
 - Every non-trivial assertion made by the eventual answer needs a revision
   protocol (declared defeaters). These answer assertions are not the source
-  claims that may later be ingested as evidence.
+  claims that may later be ingested as evidence. The revision_protocol port
+  ACCEPTS only salience-weighted defeaters: lead with near-term /
+  high-base-rate defeaters under the prompt's horizon; rare or long-horizon
+  defeaters may be included but only briefly, in proportion to rarity (even
+  when that short note slightly diverts flow). Do not treat exotic or remote
+  defeaters as equally weighted satisfiers of the port. Encode this in
+  port_parameters.revision_protocol (e.g. salience_weighted: true and any
+  structural notes), not as a global answer-style rule.
 - Meta-exhaustiveness requires coverage of the answer space when the question
   makes completeness meaningful. Concrete enumeration is allowed when it
   strengthens that coverage; do not impose self-limiting "do not enumerate"
@@ -177,6 +211,8 @@ attachments covering every required port without contradiction under the
 declared logic fragment, while still resolving the excavated answerhood
 conditions. port_parameters may be {} for unused ports; only include keys for
 required ports. Keep parameters structural (flags, modes), not domain facts.
+When revision_protocol is required, port_parameters.revision_protocol must
+include salience_weighted: true (defeater acceptance is salience-weighted).
 Every required port must appear in port_layers.
 """
 
@@ -226,7 +262,9 @@ Port contracts:
 - revision_protocol: declares defeaters and update rules for assertions made by
   the eventual answer, not source claims ingested as evidence. Applicable to
   any non-trivial empirical, causal, comparative, or predictive answer
-  assertion.
+  assertion. What this port ACCEPTS is salience-weighted: high-salience
+  defeaters first; rare/long-horizon defeaters brief and non-dominant.
+  Parameters should carry salience_weighted: true.
 - meta_exhaustiveness: requires the answer to cover the structure of the
   answer space when completeness is meaningful. Enumeration is welcome when it
   helps prove coverage. Do not invent exhaustiveness the question does not
@@ -568,6 +606,14 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
         port_layers=port_layers,
     )
     port_parameters = {k: v for k, v in port_parameters.items() if k in ports}
+    if "revision_protocol" in ports:
+        rp = port_parameters.get("revision_protocol")
+        if not isinstance(rp, dict):
+            rp = {}
+        else:
+            rp = dict(rp)
+        rp["salience_weighted"] = True
+        port_parameters["revision_protocol"] = rp
     if removed:
         warnings.append(
             "Applicability audit removed: " + ", ".join(removed) + "."
@@ -620,6 +666,756 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
     )
 
 
+def _item_from_raw(
+    raw: Any,
+    *,
+    default_kind: str,
+    default_derived: list[str],
+) -> EvidenceNeedItem | None:
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        return EvidenceNeedItem(
+            kind=default_kind,  # type: ignore[arg-type]
+            statement=text,
+            salience="medium",
+            derived_from=list(default_derived),
+        )
+    if not isinstance(raw, dict):
+        return None
+    statement = str(raw.get("statement") or "").strip()
+    if not statement:
+        return None
+    kind = raw.get("kind") or default_kind
+    if kind not in ("scope", "settlement", "defeater", "class_hint"):
+        kind = default_kind
+    salience = raw.get("salience") or "medium"
+    if salience not in ("high", "medium", "low"):
+        salience = "medium"
+    derived = raw.get("derived_from")
+    if isinstance(derived, list):
+        derived_from = [str(x) for x in derived if str(x).strip()]
+    else:
+        derived_from = list(default_derived)
+    return EvidenceNeedItem(
+        kind=kind,  # type: ignore[arg-type]
+        statement=statement,
+        salience=salience,  # type: ignore[arg-type]
+        derived_from=derived_from,
+    )
+
+
+def _non_needs_for(criteria: CriteriaObject) -> list[EvidenceNonNeed]:
+    out: list[EvidenceNonNeed] = []
+    for port in criteria.required_ports:
+        if port in _NEED_AUTHORIZING_PORTS and port != "canonical_form":
+            continue
+        if port == "canonical_form":
+            # Scope absorbs canonical_form; still record as non-fetch endpoint.
+            out.append(
+                EvidenceNonNeed(
+                    port=port,
+                    reason=_NON_NEED_REASONS["canonical_form"],
+                )
+            )
+            continue
+        reason = _NON_NEED_REASONS.get(
+            port,
+            "Answer-facing port; does not authorize retrieval by itself.",
+        )
+        out.append(EvidenceNonNeed(port=port, reason=reason))
+    return out
+
+
+def _skeleton_evidence_needs(criteria: CriteriaObject, prompt: str) -> EvidenceNeedPlan:
+    """Deterministic plan from audited criteria. Used as base and LLM fallback."""
+    ports = set(criteria.required_ports)
+    ah = criteria.answerhood
+    params = criteria.port_parameters or {}
+
+    scope_parts: list[str] = []
+    if ah.direct_answer:
+        scope_parts.append(ah.direct_answer.strip())
+    elif ah.open_answerhood:
+        scope_parts.append(ah.open_answerhood.strip())
+    if criteria.prompt_fixes:
+        scope_parts.append(f"Prompt fixes: {criteria.prompt_fixes.strip()}")
+    if "canonical_form" in ports:
+        cf = params.get("canonical_form")
+        if isinstance(cf, dict) and cf:
+            scope_parts.append(
+                "Canonical form parameters: "
+                + json.dumps(cf, ensure_ascii=False)[:400]
+            )
+        elif isinstance(cf, str) and cf.strip():
+            scope_parts.append(cf.strip())
+        else:
+            scope_parts.append(
+                "Respect the required canonical_form port when scoping finds."
+            )
+    if not scope_parts:
+        scope_parts.append(
+            f"Evidence must bear on this {criteria.inquiry_type} inquiry: "
+            f"{prompt.strip()[:240]}"
+        )
+    scope = " ".join(scope_parts)
+
+    settlement: list[EvidenceNeedItem] = []
+    if "observation_map" in ports:
+        om = params.get("observation_map")
+        if isinstance(om, dict):
+            for key, val in om.items():
+                if isinstance(val, list):
+                    for item in val[:6]:
+                        text = str(item).strip()
+                        if text:
+                            settlement.append(
+                                EvidenceNeedItem(
+                                    kind="settlement",
+                                    statement=f"Check observable for «{key}»: {text}",
+                                    salience="high",
+                                    derived_from=["observation_map"],
+                                )
+                            )
+                elif val is not None and str(val).strip():
+                    settlement.append(
+                        EvidenceNeedItem(
+                            kind="settlement",
+                            statement=f"Check observable for «{key}»: {val}",
+                            salience="high",
+                            derived_from=["observation_map"],
+                        )
+                    )
+        elif isinstance(om, list):
+            for item in om[:8]:
+                text = str(item).strip()
+                if text:
+                    settlement.append(
+                        EvidenceNeedItem(
+                            kind="settlement",
+                            statement=text,
+                            salience="high",
+                            derived_from=["observation_map"],
+                        )
+                    )
+        if not settlement:
+            settlement.append(
+                EvidenceNeedItem(
+                    kind="settlement",
+                    statement=(
+                        "Find observations or measurements that would settle the "
+                        "empirical answer assertions implied by this prompt."
+                    ),
+                    salience="high",
+                    derived_from=["observation_map"],
+                )
+            )
+
+    defeaters: list[EvidenceNeedItem] = []
+    if "revision_protocol" in ports:
+        rp = params.get("revision_protocol")
+        listed: list[Any] = []
+        if isinstance(rp, dict):
+            raw_def = rp.get("defeaters") or rp.get("high_salience_defeaters") or []
+            if isinstance(raw_def, list):
+                listed = raw_def
+            for key in ("trigger", "update"):
+                if rp.get(key):
+                    defeaters.append(
+                        EvidenceNeedItem(
+                            kind="defeater",
+                            statement=f"Revision {key}: {rp.get(key)}",
+                            salience="medium",
+                            derived_from=["revision_protocol"],
+                        )
+                    )
+        elif isinstance(rp, list):
+            listed = rp
+        for i, item in enumerate(listed[:8]):
+            text = str(item).strip() if not isinstance(item, dict) else str(
+                item.get("statement") or item.get("defeater") or item
+            ).strip()
+            if not text:
+                continue
+            salience = "high" if i < 3 else "medium"
+            if isinstance(item, dict) and item.get("salience") in (
+                "high",
+                "medium",
+                "low",
+            ):
+                salience = item["salience"]
+            defeaters.append(
+                EvidenceNeedItem(
+                    kind="defeater",
+                    statement=text,
+                    salience=salience,  # type: ignore[arg-type]
+                    derived_from=["revision_protocol"],
+                )
+            )
+        if not defeaters:
+            defeaters.append(
+                EvidenceNeedItem(
+                    kind="defeater",
+                    statement=(
+                        "Hunt high-salience defeaters that would overturn the "
+                        "leading answer assertions under this prompt's horizon."
+                    ),
+                    salience="high",
+                    derived_from=["revision_protocol"],
+                )
+            )
+
+    class_hints: list[EvidenceNeedItem] = []
+    if "source_class_ranking" in ports:
+        scr = params.get("source_class_ranking")
+        classes: list[Any] = []
+        if isinstance(scr, dict):
+            classes = scr.get("classes") or scr.get("ranking") or list(scr.values())
+            if classes and not isinstance(classes, list):
+                classes = [classes]
+        elif isinstance(scr, list):
+            classes = scr
+        for item in classes[:8]:
+            if isinstance(item, dict):
+                name = str(
+                    item.get("class")
+                    or item.get("name")
+                    or item.get("label")
+                    or item
+                ).strip()
+            else:
+                name = str(item).strip()
+            if not name:
+                continue
+            class_hints.append(
+                EvidenceNeedItem(
+                    kind="class_hint",
+                    statement=f"Prefer consulting evidence class: {name}",
+                    salience="medium",
+                    derived_from=["source_class_ranking"],
+                )
+            )
+        if not class_hints:
+            class_hints.append(
+                EvidenceNeedItem(
+                    kind="class_hint",
+                    statement=(
+                        "When gathering, note distinct evidence classes so the "
+                        "eventual answer can weight them explicitly."
+                    ),
+                    salience="medium",
+                    derived_from=["source_class_ranking"],
+                )
+            )
+
+    return EvidenceNeedPlan(
+        version=EVIDENCE_NEEDS_VERSION,
+        scope=scope,
+        settlement_checks=settlement,
+        defeater_hunts=defeaters,
+        class_hints=class_hints,
+        non_needs=_non_needs_for(criteria),
+        retrieval_status="planned_only",
+    )
+
+
+def _merge_need_lists(
+    skeleton: list[EvidenceNeedItem],
+    raw_list: Any,
+    *,
+    default_kind: str,
+    default_derived: list[str],
+) -> list[EvidenceNeedItem]:
+    if not isinstance(raw_list, list) or not raw_list:
+        return skeleton
+    out: list[EvidenceNeedItem] = []
+    for raw in raw_list[:12]:
+        item = _item_from_raw(
+            raw, default_kind=default_kind, default_derived=default_derived
+        )
+        if item:
+            out.append(item)
+    return out or skeleton
+
+
+def _normalize_evidence_needs(
+    raw: Any,
+    criteria: CriteriaObject,
+    prompt: str,
+) -> tuple[EvidenceNeedPlan, list[str]]:
+    warnings: list[str] = []
+    skeleton = _skeleton_evidence_needs(criteria, prompt)
+    data = raw if isinstance(raw, dict) else {}
+    if not data:
+        warnings.append("Evidence-need model returned empty JSON; used criteria skeleton.")
+        return skeleton, warnings
+
+    scope = str(data.get("scope") or "").strip() or skeleton.scope
+    ports = set(criteria.required_ports)
+
+    settlement = (
+        _merge_need_lists(
+            skeleton.settlement_checks,
+            data.get("settlement_checks"),
+            default_kind="settlement",
+            default_derived=["observation_map"],
+        )
+        if "observation_map" in ports
+        else []
+    )
+    defeaters = (
+        _merge_need_lists(
+            skeleton.defeater_hunts,
+            data.get("defeater_hunts"),
+            default_kind="defeater",
+            default_derived=["revision_protocol"],
+        )
+        if "revision_protocol" in ports
+        else []
+    )
+    class_hints = (
+        _merge_need_lists(
+            skeleton.class_hints,
+            data.get("class_hints"),
+            default_kind="class_hint",
+            default_derived=["source_class_ranking"],
+        )
+        if "source_class_ranking" in ports
+        else []
+    )
+
+    # Never invent needs for audited-out ports.
+    if "observation_map" not in ports and settlement:
+        warnings.append("Dropped settlement_checks; observation_map not required.")
+        settlement = []
+    if "revision_protocol" not in ports and defeaters:
+        warnings.append("Dropped defeater_hunts; revision_protocol not required.")
+        defeaters = []
+    if "source_class_ranking" not in ports and class_hints:
+        warnings.append("Dropped class_hints; source_class_ranking not required.")
+        class_hints = []
+
+    return (
+        EvidenceNeedPlan(
+            version=EVIDENCE_NEEDS_VERSION,
+            scope=scope,
+            settlement_checks=settlement,
+            defeater_hunts=defeaters,
+            class_hints=class_hints,
+            non_needs=_non_needs_for(criteria),
+            retrieval_status="planned_only",
+        ),
+        warnings,
+    )
+
+
+_NEEDS_SYSTEM = """You derive an evidence-need plan from an audited criteria object.
+
+You receive a user prompt and a criteria object (required ports already
+fail-closed audited). Your job is NOT to search the web and NOT to answer.
+Emit what evidence would need to be gathered later to settle or responsibly
+defeat the best answer under these criteria.
+
+DIRECTION OF FIT
+- Derive needs FROM the criteria (answerhood, canonical scope, surviving
+  observation_map / revision_protocol / source_class_ranking parameters).
+- Do NOT invent needs for ports that are not in required_ports.
+- Do NOT treat answer ports as search endpoints. Ports stay answer-facing.
+- theorem, layer_separation, and meta_exhaustiveness shape the answer only;
+  list them under non_needs, never as fetch targets.
+- source_class_ranking yields class_hints (which classes matter), not a
+  retrieval ranker config.
+
+RULES
+- Be concrete and prompt-specific.
+- Prefer high-salience defeaters when revision_protocol is required; keep
+  exotic or long-horizon defeaters low salience and few.
+- If observation_map is absent, settlement_checks must be [].
+- If revision_protocol is absent, defeater_hunts must be [].
+- If source_class_ranking is absent, class_hints must be [].
+- Do not invent fake sources, URLs, or citations.
+- Do not use em dashes.
+
+Return ONE JSON object only:
+{
+  "scope": "what the inquiry is about for relevance filtering",
+  "settlement_checks": [
+    {"kind": "settlement", "statement": "...", "salience": "high|medium|low",
+     "derived_from": ["observation_map"]}
+  ],
+  "defeater_hunts": [
+    {"kind": "defeater", "statement": "...", "salience": "high|medium|low",
+     "derived_from": ["revision_protocol"]}
+  ],
+  "class_hints": [
+    {"kind": "class_hint", "statement": "...", "salience": "medium",
+     "derived_from": ["source_class_ranking"]}
+  ]
+}
+"""
+
+
+async def plan_evidence_needs(
+    prompt: str,
+    criteria: CriteriaObject,
+    model: str,
+    run_id: int,
+) -> EvidenceNeedResult:
+    trimmed = prompt.strip()
+    if not trimmed:
+        raise LLMError("Empty prompt; cannot plan evidence needs.")
+    if not criteria.required_ports:
+        raise LLMError("Criteria object has no required ports.")
+
+    payload = {
+        "prompt": trimmed,
+        "criteria": criteria.model_dump(),
+        "instruction": (
+            "Derive evidence needs only from surviving required_ports and "
+            "port_parameters. No retrieval in this stage."
+        ),
+    }
+    user_prompt = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    result = await client.chat(
+        messages=[
+            {"role": "system", "content": _NEEDS_SYSTEM},
+            {"role": "user", "content": user_prompt},
+        ],
+        model=model,
+        temperature=0.1,
+    )
+    db.log_call(run_id, "criteria_evidence_needs", "criteria", result, user_prompt)
+
+    warnings: list[str] = []
+    try:
+        parsed = parse_json_loose(result.content)
+    except LLMError:
+        parsed = {}
+        warnings.append("Failed to parse evidence-need JSON; used criteria skeleton.")
+
+    plan, normalize_warnings = _normalize_evidence_needs(parsed, criteria, trimmed)
+    warnings.extend(normalize_warnings)
+
+    calls = _call_summaries(run_id)
+    out = EvidenceNeedResult(
+        run_id=run_id,
+        model=result.model,
+        evidence_needs=plan,
+        calls=calls,
+        total_tokens=sum(c.total_tokens for c in calls),
+        total_cost_usd=sum(c.cost_usd for c in calls),
+        warnings=warnings,
+    )
+    criteria_log.persist_evidence_needs(
+        run_id=run_id,
+        prompt=trimmed,
+        evidence_needs=out.model_dump(),
+    )
+    return out
+
+
+_GATHER_SYSTEM = """You gather provenance-bearing evidence for an investigation stack.
+
+You receive a user prompt, audited criteria, and an evidence_needs plan. Use the
+web_search tool to find sources that address the planned needs. Then return a
+JSON object of claim atoms with provenance.
+
+DIRECTION OF FIT
+- Search only for needs listed under settlement_checks, defeater_hunts, and
+  class_hints (plus scope for relevance). Do not invent fetch targets for
+  theorem / layer_separation / meta_exhaustiveness.
+- Prefer high-salience needs first. Cap effort: a few strong finds beat many
+  weak ones. Prefer at most ~12 finds total.
+- Each find must be a claim someone/something said or reported, with source
+  title and URL from search results when available.
+- Do NOT invent URLs, titles, or publishers. If search did not yield a URL,
+  leave source_url empty and say so in confidence_note.
+- Do not answer the prompt as a finished report. Gathering only.
+
+Return ONE JSON object only (after searching):
+{
+  "finds": [
+    {
+      "id": "f1",
+      "need_kind": "settlement|defeater|class_hint|scope",
+      "need_statement": "which need this addresses",
+      "claim": "atomic who-said-what claim",
+      "source_title": "...",
+      "source_url": "https://...",
+      "source_publisher": "...",
+      "quoted_or_paraphrase": "brief support from the source",
+      "published_at": "optional date string",
+      "confidence_note": "limits / why this helps",
+      "salience": "high|medium|low"
+    }
+  ],
+  "unmet_needs": ["need statements still unfilled after search"]
+}
+"""
+
+
+def _active_need_count(plan: EvidenceNeedPlan) -> int:
+    return (
+        len(plan.settlement_checks)
+        + len(plan.defeater_hunts)
+        + len(plan.class_hints)
+    )
+
+
+def _normalize_gather(
+    raw: Any,
+    *,
+    citations: list[str],
+    plan: EvidenceNeedPlan,
+) -> tuple[GatherPacket, list[str]]:
+    warnings: list[str] = []
+    data = raw if isinstance(raw, dict) else {}
+    finds_raw = data.get("finds") if isinstance(data.get("finds"), list) else []
+    finds: list[GatheredFind] = []
+    cite_set = {c.rstrip("/") for c in citations}
+
+    for i, item in enumerate(finds_raw[:16]):
+        if not isinstance(item, dict):
+            continue
+        claim = str(item.get("claim") or "").strip()
+        if not claim:
+            continue
+        need_kind = item.get("need_kind") or "settlement"
+        if need_kind not in ("scope", "settlement", "defeater", "class_hint"):
+            need_kind = "settlement"
+        salience = item.get("salience") or "medium"
+        if salience not in ("high", "medium", "low"):
+            salience = "medium"
+        url = str(item.get("source_url") or "").strip()
+        if url and cite_set and url.rstrip("/") not in cite_set:
+            # Keep the URL but flag; model may normalize redirects.
+            pass
+        if url and not (url.startswith("http://") or url.startswith("https://")):
+            warnings.append(f"Dropped non-http URL on find {i + 1}.")
+            url = ""
+        fid = str(item.get("id") or f"f{i + 1}").strip() or f"f{i + 1}"
+        finds.append(
+            GatheredFind(
+                id=fid,
+                need_kind=need_kind,  # type: ignore[arg-type]
+                need_statement=str(item.get("need_statement") or "").strip(),
+                claim=claim,
+                source_title=str(item.get("source_title") or "").strip(),
+                source_url=url,
+                source_publisher=str(item.get("source_publisher") or "").strip(),
+                quoted_or_paraphrase=str(
+                    item.get("quoted_or_paraphrase") or ""
+                ).strip(),
+                published_at=str(item.get("published_at") or "").strip(),
+                confidence_note=str(item.get("confidence_note") or "").strip(),
+                salience=salience,  # type: ignore[arg-type]
+            )
+        )
+
+    unmet_raw = data.get("unmet_needs")
+    unmet: list[str] = []
+    if isinstance(unmet_raw, list):
+        unmet = [str(x).strip() for x in unmet_raw if str(x).strip()][:20]
+    elif not finds and _active_need_count(plan) > 0:
+        unmet = [
+            n.statement
+            for n in (
+                plan.settlement_checks + plan.defeater_hunts + plan.class_hints
+            )
+        ][:12]
+        warnings.append("Gather returned no finds; marking active needs unmet.")
+
+    status: str = "gathered" if finds else (
+        "gather_failed" if _active_need_count(plan) > 0 else "skipped"
+    )
+    note = (
+        f"{len(finds)} provenance-bearing find(s) from web_search."
+        if finds
+        else "Gather produced no provenance-bearing finds."
+    )
+    return (
+        GatherPacket(
+            version=GATHER_VERSION,
+            finds=finds,
+            unmet_needs=unmet,
+            citations=list(citations),
+            retrieval_status=status,  # type: ignore[arg-type]
+            note=note,
+        ),
+        warnings,
+    )
+
+
+def _with_needs_status(
+    plan: EvidenceNeedPlan,
+    status: str,
+    note: str,
+) -> EvidenceNeedPlan:
+    data = plan.model_dump()
+    data["retrieval_status"] = status
+    data["note"] = note
+    return EvidenceNeedPlan.model_validate(data)
+
+
+async def gather_evidence(
+    prompt: str,
+    criteria: CriteriaObject,
+    evidence_needs: EvidenceNeedPlan,
+    model: str,
+    run_id: int,
+) -> GatherResult:
+    trimmed = prompt.strip()
+    if not trimmed:
+        raise LLMError("Empty prompt; cannot gather evidence.")
+    if not criteria.required_ports:
+        raise LLMError("Criteria object has no required ports.")
+
+    warnings: list[str] = []
+
+    if _active_need_count(evidence_needs) == 0:
+        packet = GatherPacket(
+            version=GATHER_VERSION,
+            finds=[],
+            unmet_needs=[],
+            citations=[],
+            retrieval_status="skipped",
+            note=(
+                "No settlement, defeater, or class-hint needs authorized "
+                "retrieval for this run."
+            ),
+        )
+        updated = _with_needs_status(
+            evidence_needs,
+            "skipped",
+            packet.note,
+        )
+        calls = _call_summaries(run_id)
+        out = GatherResult(
+            run_id=run_id,
+            model=model,
+            gather=packet,
+            evidence_needs=updated,
+            calls=calls,
+            total_tokens=sum(c.total_tokens for c in calls),
+            total_cost_usd=sum(c.cost_usd for c in calls),
+            warnings=warnings,
+        )
+        criteria_log.persist_gather(
+            run_id=run_id,
+            prompt=trimmed,
+            gather=out.model_dump(),
+        )
+        return out
+
+    payload = {
+        "prompt": trimmed,
+        "criteria": {
+            "inquiry_type": criteria.inquiry_type,
+            "required_ports": criteria.required_ports,
+            "answerhood": criteria.answerhood.model_dump(),
+            "prompt_fixes": criteria.prompt_fixes,
+            "prompt_leaves_open": criteria.prompt_leaves_open,
+        },
+        "evidence_needs": evidence_needs.model_dump(),
+        "instruction": (
+            "Use web_search against these needs. Return JSON finds with "
+            "real provenance. Do not invent URLs."
+        ),
+    }
+    user_prompt = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    try:
+        result = await client.responses_with_web_search(
+            model=model,
+            system=_GATHER_SYSTEM,
+            user=user_prompt,
+            temperature=0.1,
+        )
+    except LLMError as exc:
+        warnings.append(f"web_search gather failed: {exc}")
+        packet = GatherPacket(
+            version=GATHER_VERSION,
+            finds=[],
+            unmet_needs=[
+                n.statement
+                for n in (
+                    evidence_needs.settlement_checks
+                    + evidence_needs.defeater_hunts
+                    + evidence_needs.class_hints
+                )
+            ][:12],
+            citations=[],
+            retrieval_status="gather_failed",
+            note=str(exc)[:400],
+        )
+        updated = _with_needs_status(
+            evidence_needs,
+            "gather_failed",
+            "Gather failed; needs remain unfilled.",
+        )
+        # Still log a synthetic ledger row via empty chat? Skip; no tokens.
+        calls = _call_summaries(run_id)
+        out = GatherResult(
+            run_id=run_id,
+            model=model,
+            gather=packet,
+            evidence_needs=updated,
+            calls=calls,
+            total_tokens=sum(c.total_tokens for c in calls),
+            total_cost_usd=sum(c.cost_usd for c in calls),
+            warnings=warnings,
+        )
+        criteria_log.persist_gather(
+            run_id=run_id,
+            prompt=trimmed,
+            gather=out.model_dump(),
+        )
+        return out
+
+    db.log_call(run_id, "criteria_gather", "criteria", result, user_prompt)
+
+    try:
+        parsed = parse_json_loose(result.content)
+    except LLMError:
+        parsed = {}
+        warnings.append("Failed to parse gather JSON; treating as empty finds.")
+
+    packet, norm_warnings = _normalize_gather(
+        parsed,
+        citations=list(result.citations or []),
+        plan=evidence_needs,
+    )
+    warnings.extend(norm_warnings)
+
+    updated = _with_needs_status(
+        evidence_needs,
+        packet.retrieval_status
+        if packet.retrieval_status in ("gathered", "gather_failed", "skipped")
+        else "gathered",
+        packet.note,
+    )
+
+    calls = _call_summaries(run_id)
+    out = GatherResult(
+        run_id=run_id,
+        model=result.model,
+        gather=packet,
+        evidence_needs=updated,
+        calls=calls,
+        total_tokens=sum(c.total_tokens for c in calls),
+        total_cost_usd=sum(c.cost_usd for c in calls),
+        warnings=warnings,
+    )
+    criteria_log.persist_gather(
+        run_id=run_id,
+        prompt=trimmed,
+        gather=out.model_dump(),
+    )
+    return out
+
+
 _PORT_TITLES = {
     "canonical_form": "Canonical form",
     "theorem": "Theorem",
@@ -632,11 +1428,13 @@ _PORT_TITLES = {
 
 _ANSWER_SYSTEM = """You draft a criteria-satisfying answer for an investigation stack.
 
-You receive a user prompt and a criteria object (including excavated answerhood
-conditions and presuppositions). Your job is to give the best substantive answer
-you can to the prompt, using what you judge to be true or best supported, and to
-present that information in the forms the required ports expect while resolving
-the excavated answerhood conditions.
+You receive a user prompt, a criteria object (including excavated answerhood
+conditions and presuppositions), optionally an evidence_needs plan, and
+optionally a gather packet of provenance-bearing finds. Your job is to give the
+best substantive answer you can to the prompt, using gathered finds when
+present plus what you judge to be true or best supported, and to present that
+information in the forms the required ports expect while resolving the
+excavated answerhood conditions.
 
 This is investigation support, not a final truth verdict: keep defeaters and
 residual uncertainty visible. But do not hide behind empty structure.
@@ -650,22 +1448,27 @@ RULES
   not invent fake exhaustive cells. If true, resolve which cell holds.
 - Admissible partial answers or presupposition challenges are allowed only when
   the criteria mark them in-bounds; otherwise prefer a direct resolution.
-- Use your knowledge and judgment about what is true or best supported. Broad
-  "evidence" here means the grounds of that judgment: known facts, established
-  reports, mechanisms, base rates, competing accounts, and their limits. You are
-  not required to run an external search tool in this stage.
+- If gather is present with finds: prefer those provenance-bearing claims for
+  settlement and defeaters. Cite source_title / source_url when you rely on a
+  find. Do not invent additional URLs.
+- If gather is missing, failed, or empty: use your knowledge and judgment, and
+  say under residual_uncertainty which evidence_needs remain unmet. Do NOT
+  pretend retrieval filled them.
+- If evidence_needs is present with retrieval_status planned_only: treat it as
+  an unsettled plan only.
 - Fill every required port with content that matches its role AND carries the
   substance of your answer. Port prose should encode your actual view, not a
   schema lecture.
-- Speak in answer assertions (statements the response asks readers to accept),
-  not source claims as a bibliographic exercise. Name real actors, events, and
-  findings when they are part of your judgment.
+- When revision_protocol is required, satisfy what that port accepts: salience-
+  weighted defeaters (see port_parameters.revision_protocol). Lead with high-
+  salience defeaters; keep rare/long-horizon ones brief and non-dominant. This
+  is a port-fulfillment rule, not a global style for the whole answer.
+- Speak in answer assertions (statements the response asks readers to accept).
+  Name real actors, events, and findings when they are part of your judgment.
 - Prefer deterministic structure under the declared logic fragment over vague
   probability talk, without evacuating the answer.
 - Do not use em dashes in any text you write.
-- Do not invent fake citations, URLs, or document titles. If you lack grounding,
-  say so under residual_uncertainty and still give the best candid answer you
-  can, with clear defeaters.
+- Do not invent fake citations, URLs, or document titles.
 - If the honest answer is uncertain, contested, or incomplete, state the leading
   account(s) and why, then list defeaters. Do not replace the answer with pure
   meta-structure.
@@ -792,6 +1595,8 @@ async def answer_to_criteria(
     criteria: CriteriaObject,
     model: str,
     run_id: int,
+    evidence_needs: EvidenceNeedPlan | None = None,
+    gather: GatherPacket | None = None,
 ) -> CriteriaAnswerResult:
     trimmed = prompt.strip()
     if not trimmed:
@@ -799,10 +1604,14 @@ async def answer_to_criteria(
     if not criteria.required_ports:
         raise LLMError("Criteria object has no required ports.")
 
-    payload = {
+    payload: dict[str, Any] = {
         "prompt": trimmed,
         "criteria": criteria.model_dump(),
     }
+    if evidence_needs is not None:
+        payload["evidence_needs"] = evidence_needs.model_dump()
+    if gather is not None:
+        payload["gather"] = gather.model_dump()
     user_prompt = json.dumps(payload, ensure_ascii=False, indent=2)
 
     result = await client.chat(
@@ -830,6 +1639,8 @@ async def answer_to_criteria(
         run_id=run_id,
         model=result.model,
         answer=answer,
+        evidence_needs=evidence_needs,
+        gather=gather,
         calls=calls,
         total_tokens=sum(c.total_tokens for c in calls),
         total_cost_usd=sum(c.cost_usd for c in calls),

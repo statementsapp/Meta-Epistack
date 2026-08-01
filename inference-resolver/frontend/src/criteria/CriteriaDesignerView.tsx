@@ -1,21 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useStore } from "../store";
-import type { CallSummary } from "../types";
 import { AnswerOverlay } from "./AnswerOverlay";
+import { CriteriaObjectOverlay } from "./CriteriaObjectOverlay";
 import {
   LOGIC_FRAGMENT_LABELS,
   PORT_CATALOGUE,
   PORT_IDS,
   type AnswerResult,
+  type BouncerResult,
   type CriteriaAnswer,
   type CriteriaObject,
   type DesignResult,
+  type EvidenceNeedItem,
+  type EvidenceNeedPlan,
+  type GatheredFind,
+  type GatherPacket,
   type PortId,
 } from "./types";
 
 const fmtCost = (v: number) => `$${v.toFixed(4)}`;
-const OVERLAY_DELAY_MS = 7000;
+const OVERLAY_DELAY_MS = 12000;
+
+type FlowPhase = "idle" | "needs" | "gather" | "answer";
 
 export function CriteriaDesignerView() {
   const health = useStore((s) => s.health);
@@ -29,9 +36,15 @@ export function CriteriaDesignerView() {
   const [error, setError] = useState<string | null>(null);
 
   const [overlayOpen, setOverlayOpen] = useState(false);
+  const [criteriaOverlayOpen, setCriteriaOverlayOpen] = useState(false);
+  const [flowPhase, setFlowPhase] = useState<FlowPhase>("idle");
   const [answerLoading, setAnswerLoading] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [answerPayload, setAnswerPayload] = useState<AnswerResult | null>(null);
+  const [needsPlan, setNeedsPlan] = useState<EvidenceNeedPlan | null>(null);
+  const [needsError, setNeedsError] = useState<string | null>(null);
+  const [gatherPacket, setGatherPacket] = useState<GatherPacket | null>(null);
+  const [gatherError, setGatherError] = useState<string | null>(null);
 
   const generationRef = useRef(0);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,6 +57,26 @@ export function CriteriaDesignerView() {
     };
   }, []);
 
+  const mergeRunStats = (partial: {
+    run_id: number;
+    model?: string;
+    calls?: AnswerResult["calls"];
+    total_tokens?: number;
+    total_cost_usd?: number;
+  }) => {
+    setResult((prev) =>
+      prev && prev.run_id === partial.run_id
+        ? {
+            ...prev,
+            calls: partial.calls ?? prev.calls,
+            total_tokens: partial.total_tokens ?? prev.total_tokens,
+            total_cost_usd: partial.total_cost_usd ?? prev.total_cost_usd,
+            model: partial.model || prev.model,
+          }
+        : prev,
+    );
+  };
+
   const clearAnswerFlow = () => {
     generationRef.current += 1;
     if (overlayTimerRef.current) {
@@ -51,18 +84,40 @@ export function CriteriaDesignerView() {
       overlayTimerRef.current = null;
     }
     setOverlayOpen(false);
+    setCriteriaOverlayOpen(false);
+    setFlowPhase("idle");
     setAnswerLoading(false);
     setAnswerError(null);
     setAnswerPayload(null);
+    setNeedsPlan(null);
+    setNeedsError(null);
+    setGatherPacket(null);
+    setGatherError(null);
   };
 
-  const startAnswerFlow = (next: DesignResult, sourcePrompt: string) => {
+  const openAnswerOverlay = () => {
+    setCriteriaOverlayOpen(false);
+    setOverlayOpen(true);
+  };
+
+  const openCriteriaOverlay = () => {
+    setOverlayOpen(false);
+    setCriteriaOverlayOpen(true);
+  };
+
+  const startForwardFlow = (next: DesignResult, sourcePrompt: string) => {
     if (!next.bouncer.admitted || !next.criteria || next.run_id == null) return;
 
     const gen = ++generationRef.current;
+    const runModel = next.model || model || undefined;
+    setFlowPhase("needs");
     setAnswerLoading(true);
     setAnswerError(null);
     setAnswerPayload(null);
+    setNeedsPlan(null);
+    setNeedsError(null);
+    setGatherPacket(null);
+    setGatherError(null);
     setOverlayOpen(false);
 
     if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
@@ -70,34 +125,80 @@ export function CriteriaDesignerView() {
       if (generationRef.current === gen) setOverlayOpen(true);
     }, OVERLAY_DELAY_MS);
 
-    void api
-      .answerCriteria({
-        prompt: sourcePrompt,
-        criteria: next.criteria,
-        model: next.model || model || undefined,
-        run_id: next.run_id,
-      })
-      .then((answered) => {
+    void (async () => {
+      let plan: EvidenceNeedPlan | undefined;
+      let packet: GatherPacket | undefined;
+
+      try {
+        const needs = await api.planEvidenceNeeds({
+          prompt: sourcePrompt,
+          criteria: next.criteria!,
+          model: runModel,
+          run_id: next.run_id!,
+        });
+        if (generationRef.current !== gen) return;
+        plan = needs.evidence_needs;
+        setNeedsPlan(plan);
+        mergeRunStats(needs);
+        if (needs.warnings?.length) {
+          setNeedsError(needs.warnings.join(" "));
+        }
+      } catch (e) {
+        if (generationRef.current !== gen) return;
+        setNeedsError((e as Error).message);
+      }
+
+      if (generationRef.current !== gen) return;
+
+      if (plan) {
+        setFlowPhase("gather");
+        try {
+          const gathered = await api.gatherEvidence({
+            prompt: sourcePrompt,
+            criteria: next.criteria!,
+            evidence_needs: plan,
+            model: runModel,
+            run_id: next.run_id!,
+          });
+          if (generationRef.current !== gen) return;
+          packet = gathered.gather;
+          plan = gathered.evidence_needs;
+          setGatherPacket(packet);
+          setNeedsPlan(plan);
+          mergeRunStats(gathered);
+          if (gathered.warnings?.length) {
+            setGatherError(gathered.warnings.join(" "));
+          }
+        } catch (e) {
+          if (generationRef.current !== gen) return;
+          setGatherError((e as Error).message);
+        }
+      }
+
+      if (generationRef.current !== gen) return;
+      setFlowPhase("answer");
+
+      try {
+        const answered = await api.answerCriteria({
+          prompt: sourcePrompt,
+          criteria: next.criteria!,
+          model: runModel,
+          run_id: next.run_id!,
+          evidence_needs: plan,
+          gather: packet,
+        });
         if (generationRef.current !== gen) return;
         setAnswerPayload(answered);
         setAnswerLoading(false);
-        setResult((prev) =>
-          prev && prev.run_id === answered.run_id
-            ? {
-                ...prev,
-                calls: answered.calls,
-                total_tokens: answered.total_tokens,
-                total_cost_usd: answered.total_cost_usd,
-                model: answered.model,
-              }
-            : prev,
-        );
-      })
-      .catch((e) => {
+        setFlowPhase("idle");
+        mergeRunStats(answered);
+      } catch (e) {
         if (generationRef.current !== gen) return;
         setAnswerError((e as Error).message);
         setAnswerLoading(false);
-      });
+        setFlowPhase("idle");
+      }
+    })();
   };
 
   const onGenerate = async () => {
@@ -110,7 +211,7 @@ export function CriteriaDesignerView() {
       setSelectedPort(
         (next.criteria?.required_ports[0] as PortId | undefined) ?? null,
       );
-      startAnswerFlow(next, prompt);
+      startForwardFlow(next, prompt);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -122,14 +223,23 @@ export function CriteriaDesignerView() {
   const bouncer = result?.bouncer ?? null;
   const answer: CriteriaAnswer | null = answerPayload?.answer ?? null;
 
+  const statusText =
+    flowPhase === "needs"
+      ? "Planning evidence needs from criteria…"
+      : flowPhase === "gather"
+        ? "Gathering provenance-bearing finds…"
+        : flowPhase === "answer" || answerLoading
+          ? "Drafting criteria-satisfying answer…"
+          : null;
+
   return (
     <div className="criteria-view">
       <div className="criteria-layout">
         <div className="panel criteria-input">
           <div className="section-title">Prompt</div>
           <p className="criteria-lead">
-            Before search or answer generation, an LLM classifies the prompt and
-            designs structural criteria that a good response must satisfy.
+            Criteria from the prompt, then evidence needs, then web gather into
+            provenance-bearing finds, then a criteria-satisfying answer.
           </p>
           <textarea
             className="criteria-textarea"
@@ -160,15 +270,31 @@ export function CriteriaDesignerView() {
             {running ? "Designing…" : "Generate Criteria"}
           </button>
           {error && <div className="error">{error}</div>}
-          {answerLoading && bouncer?.admitted && (
-            <div className="warn-text">Drafting criteria-satisfying answer…</div>
+          {statusText && bouncer?.admitted && (
+            <div className="warn-text">{statusText}</div>
+          )}
+          {needsError && needsPlan && (
+            <div className="warn-text" style={{ marginTop: 8 }}>
+              Needs warnings: {needsError}
+            </div>
+          )}
+          {needsError && !needsPlan && (
+            <div className="warn-text" style={{ marginTop: 8 }}>
+              Evidence-need plan failed ({needsError}); answering from criteria
+              alone.
+            </div>
+          )}
+          {gatherError && (
+            <div className="warn-text" style={{ marginTop: 8 }}>
+              Gather: {gatherError}
+            </div>
           )}
           {answerPayload && !overlayOpen && (
             <button
               type="button"
               className="secondary"
               style={{ marginTop: 8, width: "100%" }}
-              onClick={() => setOverlayOpen(true)}
+              onClick={openAnswerOverlay}
             >
               Show answer
             </button>
@@ -180,42 +306,7 @@ export function CriteriaDesignerView() {
           )}
 
           {bouncer && (
-            <>
-              <div className="section-title">Bouncer</div>
-              {bouncer.admitted ? (
-                <div className="inspector-link">
-                  <div className="type" style={{ color: "#3fb950" }}>
-                    Admitted
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 13 }}>
-                    Type: <span className="claim-id">{bouncer.inquiry_type}</span>
-                  </div>
-                  <div style={{ marginTop: 4, color: "var(--text-dim)", fontSize: 12 }}>
-                    {bouncer.note}
-                  </div>
-                  <SurfaceFeaturesBlock features={bouncer.features} />
-                </div>
-              ) : (
-                <div className="inspector-link">
-                  <div className="type" style={{ color: "#f85149" }}>
-                    Rejected
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 13 }}>
-                    Type: <span className="claim-id">{bouncer.label}</span>
-                    <span style={{ color: "var(--text-dim)" }}>
-                      {" "}
-                      ({bouncer.rejected_type})
-                    </span>
-                  </div>
-                  <div className="error" style={{ marginTop: 8 }}>
-                    {bouncer.message}
-                  </div>
-                  {"features" in bouncer && bouncer.features && (
-                    <SurfaceFeaturesBlock features={bouncer.features} />
-                  )}
-                </div>
-              )}
-            </>
+            <BouncerSummary bouncer={bouncer} />
           )}
 
           {result && (result.total_tokens != null || (result.calls?.length ?? 0) > 0) && (
@@ -232,8 +323,8 @@ export function CriteriaDesignerView() {
 
           {!running && !result && (
             <div className="empty" style={{ position: "relative", minHeight: 280 }}>
-              Enter a prompt and generate criteria. Uses the same LLM + token
-              ledger as claim resolution. Rejected prompts show a type label only.
+              Enter a prompt and generate criteria. Flow: criteria → evidence
+              needs → gather → answer. Rejected prompts show a type label only.
             </div>
           )}
 
@@ -244,14 +335,36 @@ export function CriteriaDesignerView() {
           )}
 
           {!running && criteria && (
-            <CriteriaPanel
-              criteria={criteria}
-              selectedPort={selectedPort}
-              onSelectPort={setSelectedPort}
-            />
+            <>
+              <CriteriaPanel
+                criteria={criteria}
+                selectedPort={selectedPort}
+                onSelectPort={setSelectedPort}
+                onShowObject={openCriteriaOverlay}
+              />
+              {(needsPlan || flowPhase === "needs") && (
+                <EvidenceNeedsPanel
+                  plan={needsPlan}
+                  loading={flowPhase === "needs" && !needsPlan}
+                />
+              )}
+              {(gatherPacket || flowPhase === "gather") && (
+                <GatherPanel
+                  packet={gatherPacket}
+                  loading={flowPhase === "gather" && !gatherPacket}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
+
+      {criteriaOverlayOpen && criteria && (
+        <CriteriaObjectOverlay
+          criteria={criteria}
+          onClose={() => setCriteriaOverlayOpen(false)}
+        />
+      )}
 
       {overlayOpen && (
         <AnswerOverlay
@@ -268,98 +381,224 @@ export function CriteriaDesignerView() {
   );
 }
 
-function TokenStats({ result }: { result: DesignResult }) {
-  const calls = result.calls ?? [];
-  return (
-    <>
-      <div className="section-title">This design run</div>
-      <div className="stat-grid">
-        <div className="stat">
-          <div className="label">Total tokens</div>
-          <div className="value">{(result.total_tokens ?? 0).toLocaleString()}</div>
-        </div>
-        <div className="stat">
-          <div className="label">Total cost</div>
-          <div className="value">{fmtCost(result.total_cost_usd ?? 0)}</div>
-        </div>
-        <div className="stat">
-          <div className="label">Model</div>
-          <div className="value" style={{ fontSize: 12 }}>
-            {result.model ?? "N/A"}
-          </div>
-        </div>
-        <div className="stat">
-          <div className="label">Run id</div>
-          <div className="value">{result.run_id ?? "N/A"}</div>
-        </div>
-        {result.criteria?.prompt_hash && (
-          <div className="stat criteria-run-hash">
-            <div className="label">Prompt hash</div>
-            <div className="value mono">{result.criteria.prompt_hash}</div>
-          </div>
-        )}
+function EvidenceNeedsPanel({
+  plan,
+  loading,
+}: {
+  plan: EvidenceNeedPlan | null;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="panel evidence-needs-panel">
+        <div className="section-title">Evidence needs</div>
+        <p className="criteria-prose">Deriving settlement and defeater needs from criteria…</p>
       </div>
-      {result.run_id != null && (
-        <div className="criteria-log-hint">
-          Logged as run #{result.run_id} under backend/app/data/criteria_runs/
-          and criteria_run_log.jsonl
-        </div>
-      )}
-      {calls.length > 0 && (
+    );
+  }
+  if (!plan) return null;
+
+  return (
+    <div className="panel evidence-needs-panel">
+      <div className="section-title">Evidence needs</div>
+      <p className="criteria-prose">{plan.note}</p>
+      <p className="criteria-log-hint">Status: {plan.retrieval_status}</p>
+      {plan.scope && (
         <>
-          <div className="section-title">Calls ({calls.length})</div>
-          <div className="calls-list">
-            {calls.map((c: CallSummary) => (
-              <div key={c.id} className="metric">
-                <span>
-                  #{c.id} · {c.stage}
-                </span>
-                <span className="val">
-                  {c.total_tokens} tok · {c.latency_ms}ms · {fmtCost(c.cost_usd)}
-                </span>
-              </div>
-            ))}
-          </div>
+          <div className="section-title">Scope</div>
+          <p className="criteria-prose">{plan.scope}</p>
         </>
       )}
-      {(result.warnings?.length ?? 0) > 0 && (
-        <div className="warn-text">{result.warnings!.join("\n")}</div>
+      <NeedList title="Settlement checks" items={plan.settlement_checks} empty="None (observation_map not required)." />
+      <NeedList title="Defeater hunts" items={plan.defeater_hunts} empty="None (revision_protocol not required)." />
+      <NeedList title="Class hints" items={plan.class_hints} empty="None (source_class_ranking not required)." />
+      {plan.non_needs.length > 0 && (
+        <>
+          <div className="section-title">Non-needs (answer form only)</div>
+          <ul className="criteria-statements">
+            {plan.non_needs.map((n) => (
+              <li key={n.port}>
+                <strong>{PORT_CATALOGUE[n.port as PortId]?.label ?? n.port}</strong>
+                {": "}
+                {n.reason}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+function GatherPanel({
+  packet,
+  loading,
+}: {
+  packet: GatherPacket | null;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="panel gather-panel">
+        <div className="section-title">Gather</div>
+        <p className="criteria-prose">
+          Searching the web for provenance-bearing finds against the need plan…
+        </p>
+      </div>
+    );
+  }
+  if (!packet) return null;
+
+  return (
+    <div className="panel gather-panel">
+      <div className="section-title">Gather</div>
+      <p className="criteria-prose">{packet.note}</p>
+      <p className="criteria-log-hint">
+        Status: {packet.retrieval_status}
+        {packet.finds.length > 0 ? ` · ${packet.finds.length} find(s)` : ""}
+      </p>
+      {packet.finds.length === 0 ? (
+        <p className="criteria-prose">No finds attached for this run.</p>
+      ) : (
+        <ul className="criteria-statements">
+          {packet.finds.map((f) => (
+            <GatherFindRow key={f.id} find={f} />
+          ))}
+        </ul>
+      )}
+      {packet.unmet_needs.length > 0 && (
+        <>
+          <div className="section-title">Unmet needs</div>
+          <ul className="criteria-statements">
+            {packet.unmet_needs.map((n, i) => (
+              <li key={`unmet-${i}`}>{n}</li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+function GatherFindRow({ find }: { find: GatheredFind }) {
+  return (
+    <li>
+      <span className="criteria-layer-tag">{find.need_kind}</span>{" "}
+      <span className="criteria-layer-tag">{find.salience}</span>
+      <div style={{ marginTop: 4 }}>{find.claim}</div>
+      {(find.source_title || find.source_url) && (
+        <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-dim)" }}>
+          {find.source_url ? (
+            <a href={find.source_url} target="_blank" rel="noreferrer">
+              {find.source_title || find.source_url}
+            </a>
+          ) : (
+            find.source_title
+          )}
+          {find.source_publisher ? ` · ${find.source_publisher}` : ""}
+        </div>
+      )}
+      {find.quoted_or_paraphrase && (
+        <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-dim)" }}>
+          {find.quoted_or_paraphrase}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function NeedList({
+  title,
+  items,
+  empty,
+}: {
+  title: string;
+  items: EvidenceNeedItem[];
+  empty: string;
+}) {
+  return (
+    <>
+      <div className="section-title">{title}</div>
+      {items.length === 0 ? (
+        <p className="criteria-prose">{empty}</p>
+      ) : (
+        <ul className="criteria-statements">
+          {items.map((item, i) => (
+            <li key={`${item.kind}-${i}`}>
+              <span className="criteria-layer-tag">{item.salience}</span>{" "}
+              {item.statement}
+            </li>
+          ))}
+        </ul>
       )}
     </>
   );
 }
 
-function SurfaceFeaturesBlock({
-  features,
-}: {
-  features: CriteriaObject["surface_features"];
-}) {
+function BouncerSummary({ bouncer }: { bouncer: BouncerResult }) {
+  const failed = !bouncer.admitted;
+
+  if (!failed) {
+    return (
+      <div className="bouncer-summary bouncer-pass" title={bouncer.note || "Admitted"}>
+        <span className="bouncer-mark" aria-hidden="true">
+          ✓
+        </span>
+        <span className="bouncer-label">Bouncer</span>
+        <span className="bouncer-status">Admitted · {bouncer.inquiry_type}</span>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ marginTop: 10 }}>
-      <div className="section-title" style={{ marginTop: 0 }}>
-        Surface features
+    <details className="bouncer-summary bouncer-fail" open>
+      <summary>
+        <span className="bouncer-mark" aria-hidden="true">
+          ✕
+        </span>
+        <span className="bouncer-label">Bouncer</span>
+        <span className="bouncer-status">Rejected · {bouncer.label}</span>
+      </summary>
+      <div className="bouncer-fail-body">
+        <div style={{ fontSize: 13 }}>
+          Type: <span className="claim-id">{bouncer.rejected_type}</span>
+        </div>
+        <div className="error" style={{ marginTop: 8 }}>
+          {bouncer.message}
+        </div>
       </div>
-      <div className="metric">
-        <span>tense</span>
-        <span className="val">{features.tense}</span>
+    </details>
+  );
+}
+
+function TokenStats({ result }: { result: DesignResult }) {
+  const calls = result.calls ?? [];
+  return (
+    <>
+      <div className="section-title">This criteria run</div>
+      <div className="stat-grid">
+        <div className="stat">
+          <div className="label">Tokens</div>
+          <div className="value">{(result.total_tokens ?? 0).toLocaleString()}</div>
+        </div>
+        <div className="stat">
+          <div className="label">Cost</div>
+          <div className="value">{fmtCost(result.total_cost_usd ?? 0)}</div>
+        </div>
+        <div className="stat">
+          <div className="label">Run</div>
+          <div className="value">#{result.run_id ?? "N/A"}</div>
+        </div>
       </div>
-      <div className="metric">
-        <span>quantifiers</span>
-        <span className="val">{features.hasQuantifiers ? "yes" : "no"}</span>
-      </div>
-      <div className="metric">
-        <span>modals</span>
-        <span className="val">{features.hasModals ? "yes" : "no"}</span>
-      </div>
-      <div className="metric">
-        <span>evaluative language</span>
-        <span className="val">{features.hasEvaluativeLanguage ? "yes" : "no"}</span>
-      </div>
-      <div className="metric">
-        <span>closedness</span>
-        <span className="val">{features.closedness}</span>
-      </div>
-    </div>
+      {calls.length > 0 && (
+        <div className="criteria-log-hint">
+          {calls.length} call{calls.length === 1 ? "" : "s"} · {result.model ?? "N/A"}
+        </div>
+      )}
+      {(result.warnings?.length ?? 0) > 0 && (
+        <div className="warn-text">{result.warnings!.join("\n")}</div>
+      )}
+    </>
   );
 }
 
@@ -400,10 +639,12 @@ function CriteriaPanel({
   criteria,
   selectedPort,
   onSelectPort,
+  onShowObject,
 }: {
   criteria: CriteriaObject;
   selectedPort: PortId | null;
   onSelectPort: (id: PortId) => void;
+  onShowObject: () => void;
 }) {
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const required = new Set(criteria.required_ports);
@@ -595,7 +836,18 @@ function CriteriaPanel({
               <div className="mono">{criteria.completeness_template}</div>
             </details>
 
-            <div className="section-title">Criteria object</div>
+            <div className="criteria-object-heading">
+              <div className="section-title" style={{ marginTop: 0 }}>
+                Criteria object
+              </div>
+              <button
+                type="button"
+                className="criteria-technical-toggle"
+                onClick={onShowObject}
+              >
+                Show criteria object
+              </button>
+            </div>
             <div className="mono criteria-object">
               {JSON.stringify(
                 {

@@ -1,0 +1,31 @@
+---
+description: Criteria are always generated from the prompt; build forward from that object
+alwaysApply: true
+---
+
+# Criteria-first build order
+
+Settled policy:
+[`inference-resolver/docs/CRITERIA_FIRST.md`](inference-resolver/docs/CRITERIA_FIRST.md).
+
+Epistemic attitude (ports, audit, answerhood):
+[`inference-resolver/docs/EPISTEMOLOGY.md`](inference-resolver/docs/EPISTEMOLOGY.md).
+
+## Required behavior
+
+1. **Generate criteria directly from the user prompt** (design + fail-closed
+   applicability audit). The audited criteria object is the hub for the run.
+2. **Build forward from that object.** Evidence-need plans, gather/ingest,
+   criteria-satisfying answers, and later structure/assessment consume or attach
+   to *this run’s* dynamic `required_ports` / `port_parameters` — they do not
+   invent a parallel schema from search hits or drafts.
+3. **Do not invert the order.** Do not start from retrieval, corpora, or a claim
+   graph and retrofit criteria afterward. Do not assume a fixed port spine when
+   the audit dropped ports for this prompt.
+4. **Warn before proceeding** if a plan or change would contravene
+   `CRITERIA_FIRST.md`; ask whether to treat it as an explicit exception or
+   realign.
+
+Compatible work on the claim-graph demo mode is fine when it stays a separate
+path; anything feeding the criteria-satisfying response must respect
+prompt → criteria → forward.

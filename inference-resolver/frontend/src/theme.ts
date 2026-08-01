@@ -3,15 +3,15 @@ import type { LinkType } from "./types";
 // Single source of truth for the epistemics-to-visuals mapping. A richer or
 // skeuomorphic re-skin changes these tokens without touching pipeline or views.
 export const theme = {
-  bg: "#0f1115",
-  panel: "#171a21",
-  panelAlt: "#1e222b",
-  border: "#2a2f3a",
-  text: "#e6e8ee",
-  textDim: "#9aa1b0",
-  accent: "#5b8cff",
+  bg: "#151a24",
+  panel: "#1c2433",
+  panelAlt: "#243044",
+  border: "#354560",
+  text: "#e8ecf5",
+  textDim: "#a4b0c4",
+  accent: "#7aa6ff",
   node: "#c8ccd6",
-  nodeText: "#0f1115",
+  nodeText: "#151a24",
 };
 
 export const linkColor: Record<LinkType, string> = {

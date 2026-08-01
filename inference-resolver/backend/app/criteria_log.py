@@ -64,6 +64,8 @@ def persist_design(
         "created_at": existing.get("created_at") or _now(),
         "prompt": prompt,
         "design": design,
+        "evidence_needs": existing.get("evidence_needs"),
+        "gather": existing.get("gather"),
         "answer": existing.get("answer"),
     }
     _write(payload)
@@ -83,6 +85,91 @@ def persist_design(
         }
     )
     return payload
+
+
+def persist_evidence_needs(
+    *,
+    run_id: int,
+    prompt: str,
+    evidence_needs: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach evidence-need plan to an existing criteria run log."""
+    _ensure_dirs()
+    existing = load_run(run_id) or {
+        "schema_version": LOG_SCHEMA_VERSION,
+        "run_id": run_id,
+        "kind": "criteria",
+        "created_at": _now(),
+        "prompt": prompt,
+        "design": None,
+    }
+    existing["updated_at"] = _now()
+    existing["prompt"] = prompt or existing.get("prompt") or ""
+    existing["evidence_needs"] = evidence_needs
+    _write(existing)
+    plan = (evidence_needs.get("evidence_needs") or {}) if isinstance(
+        evidence_needs.get("evidence_needs"), dict
+    ) else evidence_needs
+    n_checks = len(plan.get("settlement_checks") or []) if isinstance(plan, dict) else 0
+    n_defeaters = len(plan.get("defeater_hunts") or []) if isinstance(plan, dict) else 0
+    _append_index(
+        {
+            "at": existing["updated_at"],
+            "event": "evidence_needs",
+            "run_id": run_id,
+            "prompt_preview": (existing.get("prompt") or "")[:160],
+            "settlement_checks": n_checks,
+            "defeater_hunts": n_defeaters,
+            "total_tokens": evidence_needs.get("total_tokens"),
+            "total_cost_usd": evidence_needs.get("total_cost_usd"),
+            "path": str(_run_path(run_id).as_posix()),
+        }
+    )
+    return existing
+
+
+def persist_gather(
+    *,
+    run_id: int,
+    prompt: str,
+    gather: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach gather packet to an existing criteria run log."""
+    _ensure_dirs()
+    existing = load_run(run_id) or {
+        "schema_version": LOG_SCHEMA_VERSION,
+        "run_id": run_id,
+        "kind": "criteria",
+        "created_at": _now(),
+        "prompt": prompt,
+        "design": None,
+    }
+    existing["updated_at"] = _now()
+    existing["prompt"] = prompt or existing.get("prompt") or ""
+    existing["gather"] = gather
+    updated_plan = gather.get("evidence_needs")
+    if isinstance(updated_plan, dict):
+        prev_needs = existing.get("evidence_needs")
+        if isinstance(prev_needs, dict):
+            merged = dict(prev_needs)
+            merged["evidence_needs"] = updated_plan
+            existing["evidence_needs"] = merged
+    _write(existing)
+    packet = gather.get("gather") if isinstance(gather.get("gather"), dict) else {}
+    _append_index(
+        {
+            "at": existing["updated_at"],
+            "event": "gather",
+            "run_id": run_id,
+            "prompt_preview": (existing.get("prompt") or "")[:160],
+            "finds": len(packet.get("finds") or []),
+            "retrieval_status": packet.get("retrieval_status"),
+            "total_tokens": gather.get("total_tokens"),
+            "total_cost_usd": gather.get("total_cost_usd"),
+            "path": str(_run_path(run_id).as_posix()),
+        }
+    )
+    return existing
 
 
 def persist_answer(
@@ -144,6 +231,7 @@ def list_recent(limit: int = 40) -> list[dict[str, Any]]:
         design = data.get("design") or {}
         bouncer = design.get("bouncer") or {}
         answer = data.get("answer") or {}
+        needs = data.get("evidence_needs") or {}
         out.append(
             {
                 "run_id": data.get("run_id"),
@@ -151,9 +239,14 @@ def list_recent(limit: int = 40) -> list[dict[str, Any]]:
                 "prompt_preview": (data.get("prompt") or "")[:160],
                 "admitted": bool(bouncer.get("admitted")),
                 "inquiry_type": bouncer.get("inquiry_type") or bouncer.get("rejected_type"),
+                "has_evidence_needs": bool(
+                    needs.get("evidence_needs") if isinstance(needs, dict) else needs
+                ),
                 "has_answer": bool(answer.get("answer")),
                 "headline": (answer.get("answer") or {}).get("headline"),
-                "total_tokens": answer.get("total_tokens") or design.get("total_tokens"),
+                "total_tokens": answer.get("total_tokens")
+                or needs.get("total_tokens")
+                or design.get("total_tokens"),
                 "path": str(path.as_posix()),
             }
         )

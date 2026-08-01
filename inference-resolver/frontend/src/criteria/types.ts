@@ -71,12 +71,13 @@ export const PORT_CATALOGUE: Record<PortId, PortSignature> = {
   revision_protocol: {
     id: "revision_protocol",
     label: "Revision protocol",
-    typeSignature: "Protocol: { defeaters: Defeater[]; trigger: Condition; update: Rule }",
+    typeSignature:
+      "Protocol: { defeaters: Defeater[]; trigger: Condition; update: Rule; salience_weighted: true }",
     description:
-      "Declared defeaters and update rules for each non-trivial assertion made by the eventual answer.",
+      "Declared defeaters and update rules for each non-trivial assertion. This port accepts only salience-weighted defeaters: high-salience first; rare or long-horizon ones brief and non-dominant.",
     shortCriterion:
-      "Declare what evidence would defeat each answer assertion and trigger revision.",
-    why: "An answer assertion with no stated defeaters is insulated from evidence. Declaring how it would be revised makes the eventual answer responsible to future observation rather than a closed dogma. This refers to statements produced by the answer, not claims ingested from sources.",
+      "Declare salience-weighted defeaters and revision triggers for each answer assertion.",
+    why: "An answer assertion with no stated defeaters is insulated from evidence. Declaring how it would be revised makes the eventual answer responsible to future observation rather than a closed dogma. Salience weighting is part of what counts as satisfying this port: rare/exotic or long-horizon defeaters must not dominate the attachment.",
   },
   meta_exhaustiveness: {
     id: "meta_exhaustiveness",
@@ -236,6 +237,75 @@ export interface AnswerResult {
   run_id: number;
   model: string;
   answer: CriteriaAnswer;
+  evidence_needs?: EvidenceNeedPlan | null;
+  gather?: GatherPacket | null;
+  calls: CallSummary[];
+  total_tokens: number;
+  total_cost_usd: number;
+  warnings?: string[];
+}
+
+export interface EvidenceNeedItem {
+  kind: "scope" | "settlement" | "defeater" | "class_hint";
+  statement: string;
+  salience: "high" | "medium" | "low";
+  derived_from: string[];
+}
+
+export interface EvidenceNonNeed {
+  port: string;
+  reason: string;
+}
+
+export interface EvidenceNeedPlan {
+  version: string;
+  scope: string;
+  settlement_checks: EvidenceNeedItem[];
+  defeater_hunts: EvidenceNeedItem[];
+  class_hints: EvidenceNeedItem[];
+  non_needs: EvidenceNonNeed[];
+  retrieval_status: "planned_only" | "gathered" | "gather_failed" | "skipped";
+  note: string;
+}
+
+export interface EvidenceNeedResult {
+  run_id: number;
+  model: string;
+  evidence_needs: EvidenceNeedPlan;
+  calls: CallSummary[];
+  total_tokens: number;
+  total_cost_usd: number;
+  warnings?: string[];
+}
+
+export interface GatheredFind {
+  id: string;
+  need_kind: "scope" | "settlement" | "defeater" | "class_hint";
+  need_statement: string;
+  claim: string;
+  source_title: string;
+  source_url: string;
+  source_publisher: string;
+  quoted_or_paraphrase: string;
+  published_at: string;
+  confidence_note: string;
+  salience: "high" | "medium" | "low";
+}
+
+export interface GatherPacket {
+  version: string;
+  finds: GatheredFind[];
+  unmet_needs: string[];
+  citations: string[];
+  retrieval_status: "gathered" | "gather_failed" | "skipped";
+  note: string;
+}
+
+export interface GatherResult {
+  run_id: number;
+  model: string;
+  gather: GatherPacket;
+  evidence_needs: EvidenceNeedPlan;
   calls: CallSummary[];
   total_tokens: number;
   total_cost_usd: number;
