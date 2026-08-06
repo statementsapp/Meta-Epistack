@@ -12,7 +12,7 @@ type AppView = "criteria" | "nimble" | "resolve";
 
 export function App() {
   const s = useStore();
-  const [view, setView] = useState<AppView>("criteria");
+  const [view, setView] = useState<AppView>("nimble");
 
   useEffect(() => {
     s.init().catch((e) => s.setField("error", (e as Error).message));
@@ -26,8 +26,10 @@ export function App() {
     view === "criteria"
       ? "design structural criteria before search or answer generation"
       : view === "nimble"
-        ? "prompt stays primary; pipeline returns frame it as dense markup"
+        ? ""
         : "claims in, typed support/rebuttal graph out, with per-stage token cost";
+
+  const criteriaFamily = view === "criteria" || view === "nimble";
 
   return (
     <div
@@ -41,20 +43,26 @@ export function App() {
     >
       <div className="topbar">
         <h1>Inference Resolver</h1>
-        <span className="subtitle">{subtitle}</span>
+        {subtitle ? <span className="subtitle">{subtitle}</span> : null}
         <div className="chip-row topbar-toggle">
-          <span
-            className={`chip ${view === "criteria" ? "active" : ""}`}
-            onClick={() => setView("criteria")}
+          <div
+            className={`topbar-group${criteriaFamily ? " topbar-group-criteria" : ""}${
+              view === "nimble" ? " topbar-group-nimble" : ""
+            }`}
           >
-            Criteria Designer
-          </span>
-          <span
-            className={`chip ${view === "nimble" ? "active" : ""}`}
-            onClick={() => setView("nimble")}
-          >
-            Nimble
-          </span>
+            <span
+              className={`chip ${view === "nimble" ? "active" : ""}`}
+              onClick={() => setView("nimble")}
+            >
+              Nimble
+            </span>
+            <span
+              className={`chip ${view === "criteria" ? "active" : ""}`}
+              onClick={() => setView("criteria")}
+            >
+              Criteria Designer
+            </span>
+          </div>
           <span
             className={`chip ${view === "resolve" ? "active" : ""}`}
             onClick={() => setView("resolve")}

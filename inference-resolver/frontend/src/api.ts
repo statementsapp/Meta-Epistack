@@ -23,11 +23,16 @@ async function jsonOrThrow(res: Response) {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail ?? detail;
+      detail =
+        typeof body.detail === "string"
+          ? body.detail
+          : body.detail
+            ? JSON.stringify(body.detail)
+            : detail;
     } catch {
       /* ignore */
     }
-    throw new Error(detail);
+    throw new Error(detail || `HTTP ${res.status}`);
   }
   return res.json();
 }
@@ -50,11 +55,30 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(jsonOrThrow),
-  designCriteria: (prompt: string, model?: string): Promise<DesignResult> =>
+  designCriteria: (
+    prompt: string,
+    model?: string,
+    opts?: { audit?: boolean },
+  ): Promise<DesignResult> =>
     fetch("/api/criteria/design", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, model }),
+      body: JSON.stringify({
+        prompt,
+        model,
+        audit: opts?.audit ?? true,
+      }),
+    }).then(jsonOrThrow),
+  auditCriteria: (payload: {
+    prompt: string;
+    criteria: CriteriaObject;
+    model?: string;
+    run_id: number;
+  }): Promise<DesignResult> =>
+    fetch("/api/criteria/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     }).then(jsonOrThrow),
   planEvidenceNeeds: (payload: {
     prompt: string;

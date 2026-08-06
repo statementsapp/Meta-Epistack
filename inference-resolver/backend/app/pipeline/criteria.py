@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date, datetime, timezone
 from typing import Any
 
 from ..llm import LLMError, client, parse_json_loose
@@ -37,6 +38,22 @@ from ..config import cost_for
 CRITERIA_VERSION = "criteria-schema/v2"
 EVIDENCE_NEEDS_VERSION = "evidence-needs/v1"
 GATHER_VERSION = "gather/v1"
+
+
+def _clock_context() -> dict[str, str]:
+    """Wall-clock context so stages do not treat last season as 'current'."""
+    now = datetime.now(timezone.utc)
+    local = date.today()
+    return {
+        "today_utc": now.date().isoformat(),
+        "today_local": local.isoformat(),
+        "year": str(local.year),
+        "note": (
+            f"Today is {local.isoformat()} (local) / {now.date().isoformat()} UTC. "
+            "Prefer current-season and as-of-today evidence. Do not treat a completed "
+            "prior season as the live season unless the prompt asks about the past."
+        ),
+    }
 
 # Ports that may authorize retrieval/settlement planning (not the ports themselves
 # as search endpoints). Answer-form-only ports are listed as non_needs.
@@ -243,6 +260,7 @@ Every required port must appear in port_layers.
 
 _USER_TEMPLATE = (
     "Design epistemic criteria for the following user prompt.\n\n"
+    "CLOCK:\n{clock}\n\n"
     "PROMPT:\n{prompt}"
 )
 
@@ -503,6 +521,121 @@ async def _audit_ports(
     return approved, rationale, layers, removed
 
 
+async def _maybe_audit_ports(
+    *,
+    audit: bool,
+    prompt: str,
+    inquiry: str,
+    fragment: str,
+    ports: list[str],
+    port_parameters: dict,
+    model: str,
+    run_id: int,
+    answerhood: AnswerhoodSketch,
+    presuppositions: list[Presupposition],
+    port_layers: dict[str, str],
+    resolution_mode: str,
+) -> tuple[list[str], dict[str, str], dict[str, str], list[str]]:
+    if audit:
+        return await _audit_ports(
+            prompt=prompt,
+            inquiry=inquiry,
+            fragment=fragment,
+            ports=ports,
+            port_parameters=port_parameters,
+            model=model,
+            run_id=run_id,
+            answerhood=answerhood,
+            presuppositions=presuppositions,
+            port_layers=port_layers,
+            resolution_mode=resolution_mode,
+        )
+    applicability = {p: "provisional pending applicability audit" for p in ports}
+    layers = {p: port_layers.get(p, "erotetic") for p in ports}
+    return ports, applicability, layers, []
+
+
+async def audit_criteria(
+    prompt: str,
+    criteria: CriteriaObject,
+    model: str,
+    run_id: int,
+) -> CriteriaDesignResult:
+    """Run fail-closed applicability audit on a provisional criteria object."""
+    trimmed = prompt.strip()
+    if not trimmed:
+        raise LLMError("Empty prompt; cannot audit criteria.")
+    if not criteria.required_ports:
+        raise LLMError("Criteria object has no required ports.")
+
+    ports, port_applicability, port_layers, removed = await _audit_ports(
+        prompt=trimmed,
+        inquiry=criteria.inquiry_type,
+        fragment=criteria.logic_fragment,
+        ports=list(criteria.required_ports),
+        port_parameters=dict(criteria.port_parameters or {}),
+        model=model,
+        run_id=run_id,
+        answerhood=criteria.answerhood,
+        presuppositions=list(criteria.presuppositions or []),
+        port_layers=dict(criteria.port_layers or {}),
+        resolution_mode=criteria.resolution_mode,
+    )
+    port_parameters = {
+        k: v for k, v in (criteria.port_parameters or {}).items() if k in ports
+    }
+    if "revision_protocol" in ports:
+        rp = port_parameters.get("revision_protocol")
+        if not isinstance(rp, dict):
+            rp = {}
+        else:
+            rp = dict(rp)
+        rp["salience_weighted"] = True
+        port_parameters["revision_protocol"] = rp
+
+    warnings: list[str] = []
+    if removed:
+        warnings.append(
+            "Applicability audit removed: " + ", ".join(removed) + "."
+        )
+
+    audited = criteria.model_copy(
+        update={
+            "required_ports": ports,
+            "port_parameters": port_parameters,
+            "port_applicability": port_applicability,
+            "port_layers": port_layers,
+            "completeness_template": _completeness(
+                ports, criteria.logic_fragment
+            ),
+        }
+    )
+    calls = _call_summaries(run_id)
+    total_tokens = sum(c.total_tokens for c in calls)
+    total_cost = sum(c.cost_usd for c in calls)
+    return _persist_design(
+        trimmed,
+        CriteriaDesignResult(
+            run_id=run_id,
+            model=model,
+            bouncer={
+                "admitted": True,
+                "inquiry_type": audited.inquiry_type,
+                "features": audited.surface_features.model_dump(),
+                "note": (
+                    f"Audited as {audited.inquiry_type} "
+                    f"({audited.resolution_mode})."
+                ),
+            },
+            criteria=audited,
+            calls=calls,
+            total_tokens=total_tokens,
+            total_cost_usd=total_cost,
+            warnings=warnings,
+        ),
+    )
+
+
 def _persist_design(prompt: str, result: CriteriaDesignResult) -> CriteriaDesignResult:
     criteria_log.persist_design(
         run_id=result.run_id,
@@ -512,7 +645,9 @@ def _persist_design(prompt: str, result: CriteriaDesignResult) -> CriteriaDesign
     return result
 
 
-async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
+async def design_criteria(
+    prompt: str, model: str, *, audit: bool = True
+) -> CriteriaDesignResult:
     trimmed = prompt.strip()
     warnings: list[str] = []
 
@@ -540,7 +675,10 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
 
     doc_hash = _prompt_hash(trimmed)
     run_id = db.create_run("criteria", model, "criteria", doc_hash)
-    user_prompt = _USER_TEMPLATE.format(prompt=trimmed)
+    user_prompt = _USER_TEMPLATE.format(
+        prompt=trimmed,
+        clock=json.dumps(_clock_context(), ensure_ascii=False, indent=2),
+    )
 
     result = await client.chat(
         messages=[
@@ -631,7 +769,8 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
     prompt_fixes = str(data.get("prompt_fixes") or "").strip()
     prompt_leaves_open = str(data.get("prompt_leaves_open") or "").strip()
 
-    ports, port_applicability, port_layers, removed = await _audit_ports(
+    ports, port_applicability, port_layers, removed = await _maybe_audit_ports(
+        audit=audit,
         prompt=trimmed,
         inquiry=str(inquiry),
         fragment=str(fragment),
@@ -686,6 +825,8 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
         f"Admitted as {inquiry} ({resolution_mode}). "
         f"Criteria are a tailored subset of structural ports."
     )
+    if not audit:
+        note = (note + " Ports shown provisional pending applicability audit.").strip()
 
     return _persist_design(
         trimmed,
@@ -1090,6 +1231,23 @@ DIRECTION OF FIT
   position structure when that satisfies answerhood.
 - If mixed: keep mechanism-settling needs distinct from discourse-mapping needs.
 
+WRITING STYLE (settlement_checks and defeater_hunts)
+- One concrete observation or outcome per statement. No throat-clearing.
+- Name the variable to observe: date, market, poll, statute, seat, vote tally,
+  lab result, document clause, current-season standings, etc.
+- Use the clock year as the live year for seasonal domains (sports seasons,
+  elections in progress) unless the prompt is clearly historical.
+- Prefer: "2028 Republican nomination winner" over "outcome of the nomination
+  process in a way that bears on pathways."
+- Prefer: "presidential election winner and party, Nov 2028" over "general
+  election results that might confirm or deny ascendancy."
+- Prefer: "25th Amendment or succession event seating Vance as president before
+  2029" over vague "succession events."
+- Defeaters name a falsifier: what fact would kill a live pathway. Not a
+  research agenda.
+- Cap each statement at ~140 characters. No em dashes. No stock phrases like
+  "evidence regarding" or "information about."
+
 RULES
 - Be concrete and prompt-specific.
 - Prefer high-salience defeaters when revision_protocol is required. Salience
@@ -1136,10 +1294,12 @@ async def plan_evidence_needs(
 
     payload = {
         "prompt": trimmed,
+        "clock": _clock_context(),
         "criteria": criteria.model_dump(),
         "instruction": (
             "Derive evidence needs only from surviving required_ports and "
-            "port_parameters. No retrieval in this stage."
+            "port_parameters. No retrieval in this stage. Use clock so needs "
+            "target the live season/year, not a completed prior season."
         ),
     }
     user_prompt = json.dumps(payload, ensure_ascii=False, indent=2)
@@ -1194,6 +1354,8 @@ DIRECTION OF FIT
   theorem / layer_separation / meta_exhaustiveness.
 - Prefer high-salience needs first. Cap effort: a few strong finds beat many
   weak ones. Prefer at most ~12 finds total.
+- Respect the clock in the user payload: search for as-of-today / current-
+  season facts. Do not treat a finished prior season as the live season.
 - Each find must be a claim someone/something said or reported, with source
   title and URL from search results when available.
 - Do NOT invent URLs, titles, or publishers. If search did not yield a URL,
@@ -1377,6 +1539,7 @@ async def gather_evidence(
 
     payload = {
         "prompt": trimmed,
+        "clock": _clock_context(),
         "criteria": {
             "inquiry_type": criteria.inquiry_type,
             "resolution_mode": criteria.resolution_mode,
@@ -1387,8 +1550,8 @@ async def gather_evidence(
         },
         "evidence_needs": evidence_needs.model_dump(),
         "instruction": (
-            "Use web_search against these needs. Return JSON finds with "
-            "real provenance. Do not invent URLs."
+            "Use web_search against these needs. Prefer current-as-of-clock "
+            "sources. Return JSON finds with real provenance. Do not invent URLs."
         ),
     }
     user_prompt = json.dumps(payload, ensure_ascii=False, indent=2)
@@ -1507,6 +1670,9 @@ This is investigation support, not a final truth verdict: keep defeaters and
 residual uncertainty visible. But do not hide behind empty structure.
 
 RULES
+- Respect the clock in the user payload: reason as of today. For sports and
+  seasonal domains, the current season year in clock.year is live unless the
+  prompt is historical. Do not treat last year's final standings as "now."
 - Answer the prompt. Ports are the shape of a good answer, not a substitute for
   one. Satisfy the answerhood.direct_answer (or open_answerhood) conditions.
   Do not resolve a factual who/what/when/why question into a vacuous partition
@@ -1768,6 +1934,7 @@ async def answer_to_criteria(
 
     payload: dict[str, Any] = {
         "prompt": trimmed,
+        "clock": _clock_context(),
         "criteria": criteria.model_dump(),
     }
     if evidence_needs is not None:

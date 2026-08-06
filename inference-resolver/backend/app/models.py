@@ -122,6 +122,9 @@ LogicFragment = Literal[
 class CriteriaDesignRequest(BaseModel):
     prompt: str
     model: Optional[str] = None
+    # When False, skip the applicability LLM so required_ports can paint UI early.
+    # Call /api/criteria/audit before needs/gather/answer for fail-closed ports.
+    audit: bool = True
 
 
 class SurfaceFeatures(BaseModel):
@@ -167,6 +170,13 @@ class CriteriaObject(BaseModel):
     version: str
     completeness_template: str = ""
     surface_features: SurfaceFeatures = Field(default_factory=SurfaceFeatures)
+
+
+class CriteriaAuditRequest(BaseModel):
+    prompt: str
+    criteria: CriteriaObject
+    model: Optional[str] = None
+    run_id: int
 
 
 class BouncerAdmitted(BaseModel):

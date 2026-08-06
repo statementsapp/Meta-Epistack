@@ -21,6 +21,7 @@ from .models import (
     Claim,
     CriteriaAnswerRequest,
     CriteriaAnswerResult,
+    CriteriaAuditRequest,
     CriteriaDesignRequest,
     CriteriaDesignResult,
     EvidenceNeedRequest,
@@ -180,11 +181,34 @@ async def design_criteria(req: CriteriaDesignRequest) -> CriteriaDesignResult:
     """Bouncer + prompt-dependent criteria via LLM (logged like other stages)."""
     model = req.model or settings.default_model
     try:
-        return await criteria_design.design_criteria(req.prompt, model)
+        return await criteria_design.design_criteria(
+            req.prompt, model, audit=req.audit
+        )
     except MissingKeyError as exc:
         raise HTTPException(400, str(exc)) from exc
     except LLMError as exc:
         raise HTTPException(502, str(exc)) from exc
+
+
+@app.post("/api/criteria/audit", response_model=CriteriaDesignResult)
+async def audit_criteria(req: CriteriaAuditRequest) -> CriteriaDesignResult:
+    """Fail-closed applicability audit for provisional (pre-audit) criteria."""
+    model = req.model or settings.default_model
+    if db.get_run(req.run_id) is None:
+        raise HTTPException(404, "Run not found.")
+    try:
+        return await criteria_design.audit_criteria(
+            req.prompt,
+            req.criteria,
+            model,
+            req.run_id,
+        )
+    except MissingKeyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"Audit failed: {exc}") from exc
 
 
 @app.post("/api/criteria/evidence-needs", response_model=EvidenceNeedResult)

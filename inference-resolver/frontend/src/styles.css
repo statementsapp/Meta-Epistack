@@ -370,6 +370,61 @@ a.link-btn {
 
 .topbar-toggle {
   margin: 0 0 0 8px;
+  align-items: center;
+}
+
+.topbar-group {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+}
+
+.app.view-nimble .topbar-group-nimble {
+  border-color: #8fbf6a;
+  background: rgba(143, 191, 106, 0.16);
+}
+
+.app.view-nimble .topbar-group-nimble .chip.active {
+  background: #8fbf6a;
+  border-color: #8fbf6a;
+  color: #1a2e14;
+}
+
+.app.view-criteria .topbar-group-criteria .chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.app.view-nimble .topbar .subtitle {
+  color: #ffffff;
+}
+
+.app.view-nimble .topbar h1 {
+  color: #ffffff;
+}
+
+.app.view-nimble .topbar {
+  background: #2e4527;
+  border-bottom-color: rgba(255, 255, 255, 0.18);
+}
+
+.app.view-nimble .topbar .chip {
+  color: rgba(255, 255, 255, 0.88);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: transparent;
+}
+
+.app.view-nimble .topbar .chip:hover {
+  border-color: #8fbf6a;
+  color: #fff;
+}
+
+.app.view-nimble .topbar-toggle {
+  margin-bottom: 0;
 }
 
 .criteria-view {
@@ -887,17 +942,27 @@ a.answer-find-chip:hover {
   border-top: 1px solid var(--border);
 }
 
-/* Nimble view — user text primary; returns as dense framing */
+
+/* Nimble view ? Epilattice green; one line in, heading out, pertinent open */
 
 .nimble-view {
+  --nimble-bg: #2e4527;
+  --nimble-bg-deep: #2a3f24;
+  --nimble-fg: #ffffff;
+  --nimble-muted: rgba(255, 255, 255, 0.88);
+  --nimble-faint: rgba(255, 255, 255, 0.62);
+  --nimble-leaf: #c6d9ab;
+  --nimble-line: rgba(255, 255, 255, 0.18);
+  --nimble-warn: #f0d48a;
+  --nimble-danger: #ffb4a8;
+
   grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  background:
-    radial-gradient(ellipse 80% 55% at 50% 35%, #1a2638 0%, transparent 65%),
-    linear-gradient(165deg, #121822 0%, #151a24 45%, #10151e 100%);
+  color: var(--nimble-fg);
+  background: var(--nimble-bg);
 }
 
 .nimble-stage {
@@ -905,370 +970,863 @@ a.answer-find-chip:hover {
   flex: 1;
   min-height: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 72px 120px 88px;
+  padding: 48px 56px 72px;
   overflow: hidden;
 }
 
-.nimble-frame-ring {
-  position: absolute;
-  inset: 48px 72px 64px;
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: 4px;
-  pointer-events: none;
-  opacity: 0.55;
-  animation: nimble-frame-in 700ms ease-out;
+.nimble-stage.is-blank {
+  align-items: center;
+  justify-content: center;
+  padding: 48px 56px 96px;
+  overflow-y: auto;
 }
 
-@keyframes nimble-frame-in {
-  from {
-    opacity: 0;
-    transform: scale(0.985);
-  }
-  to {
-    opacity: 0.55;
-    transform: scale(1);
-  }
+.nimble-stage.is-result {
+  align-items: stretch;
+  justify-content: center;
+  gap: 20px;
+  padding: 28px 20px 56px;
+}
+
+.nimble-stage.is-running .nimble-heading {
+  transform: translateY(6px);
+  transition: transform 420ms ease;
+}
+
+.nimble-stage:not(.is-running) .nimble-heading {
+  transform: translateY(0);
+  transition: transform 420ms ease;
+}
+
+.nimble-loading-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  width: min(220px, 40%);
+}
+
+.nimble-loading-seg {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: background 280ms ease;
+}
+
+.nimble-loading-seg.on {
+  background: var(--nimble-leaf);
+  box-shadow: 0 0 10px rgba(198, 217, 171, 0.35);
+}
+
+.nimble-rail {
+  width: 240px;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 380ms ease,
+    transform 480ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 2;
+  align-self: stretch;
+  min-height: 0;
+}
+
+.nimble-rail.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.nimble-rail-left.in {
+  transform: translateX(0);
+}
+
+.nimble-rail-left {
+  transform: translateX(-24px);
+}
+
+.nimble-rail-right {
+  transform: translateX(24px);
+}
+
+.nimble-rail-right.in {
+  transform: translateX(0);
+}
+
+.nimble-rail-scroll {
+  height: 100%;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nimble-rail-k {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 4px;
+}
+
+.nimble-fold {
+  border-top: 1px solid var(--nimble-line);
+  padding: 2px 0 4px;
+}
+
+.nimble-fold > summary {
+  list-style: none;
+}
+
+.nimble-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.nimble-fold-sum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.nimble-fold-sum:hover .nimble-fold-k {
+  color: #ffffff;
+}
+
+.nimble-fold-glyph {
+  width: 1em;
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--nimble-leaf);
+  text-align: center;
+}
+
+.nimble-fold-glyph.warn {
+  color: var(--nimble-warn);
+}
+
+.nimble-fold-glyph.danger {
+  color: var(--nimble-danger);
+}
+
+.nimble-fold-k {
+  flex: 1;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.nimble-fold-n {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.nimble-fold-list {
+  margin: 0 0 6px;
+  padding: 0 0 0 1.4em;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.nimble-fold-list li + li {
+  margin-top: 6px;
+}
+
+.nimble-fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 8px;
+}
+
+.nimble-fold-center {
+  margin-top: 16px;
+  border-top: 1px solid var(--nimble-line);
+}
+
+.nimble-fold-center .nimble-fold-sum {
+  padding: 10px 0;
+}
+
+.nimble-rail-card {
+  border: 1px solid var(--nimble-line);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nimble-rail-list {
+  margin: 0;
+  padding-left: 1em;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.nimble-rail-list li + li {
+  margin-top: 6px;
+}
+
+.nimble-rail-wait {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.nimble-claim-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+
+.nimble-claim-row {
+  appearance: none;
+  width: 100%;
+  margin: 0;
+  padding: 7px 0;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.nimble-claim-row:hover {
+  color: #ffffff;
+  border-bottom-color: var(--nimble-line);
+}
+
+.nimble-source-card {
+  appearance: none;
+  border: 1px solid var(--nimble-line);
+  background: rgba(0, 0, 0, 0.12);
+  color: inherit;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+  animation: nimble-slide-in 360ms ease both;
+}
+
+.nimble-source-card:hover {
+  border-color: var(--nimble-leaf);
+}
+
+.nimble-source-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.nimble-source-card-claim {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .nimble-prompt-block {
   position: relative;
   z-index: 2;
-  width: min(720px, 100%);
-  text-align: center;
+  width: min(620px, 100%);
+  text-align: left;
+  flex: 1 1 auto;
+  max-width: 620px;
+  min-width: 0;
+  align-self: center;
 }
 
-.nimble-prompt-input,
-.nimble-prompt-display {
-  width: 100%;
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  font-size: clamp(22px, 3.2vw, 34px);
+.nimble-stage.is-result .nimble-prompt-block {
+  align-self: flex-start;
+  padding-top: 8px;
+}
+
+.nimble-prompt-block.is-editing {
+  width: min(560px, 100%);
+  flex: 0 1 auto;
+}
+
+.nimble-above {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 12px;
+  min-height: 1.2em;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 320ms ease,
+    transform 400ms ease;
+}
+
+.nimble-above.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.nimble-above-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+}
+
+.nimble-above-tag {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.nimble-above-char {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: 40rem;
+}
+
+.nimble-phase-tag {
+  color: var(--nimble-leaf);
+}
+
+.nimble-open-fold {
+  border: 1px solid var(--nimble-leaf);
+  background: rgba(198, 217, 171, 0.08);
+}
+
+.nimble-open-fold > summary {
+  list-style: none;
+}
+
+.nimble-open-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.nimble-open-sum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.nimble-open-body {
+  padding: 0 10px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #ffffff;
+  white-space: pre-wrap;
+}
+
+.nimble-open-glyph {
+  color: var(--nimble-leaf);
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.nimble-open-k {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nimble-leaf);
   font-weight: 700;
+  flex-shrink: 0;
+}
+
+.nimble-open-status {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--nimble-leaf);
+  background: rgba(198, 217, 171, 0.08);
+  cursor: default;
+}
+
+.nimble-open-v {
+  font-size: 12px;
   line-height: 1.35;
+  color: #ffffff;
+}
+
+.nimble-source-card-claim-primary {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.nimble-tip-text {
+  white-space: pre-wrap;
+}
+
+.nimble-tip-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--nimble-leaf);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* Level figures: primary first, satellites aligned on same baseline row */
+.nimble-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 28px;
+  margin: 20px 0 8px;
+}
+
+.nimble-figure {
+  min-width: 0;
+  animation: nimble-figure-in 480ms cubic-bezier(0.2, 0.85, 0.2, 1) both;
+}
+
+.nimble-figure.is-primary .nimble-figure-value {
+  font-size: clamp(40px, 5.5vw, 58px);
+  font-weight: 750;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+}
+
+.nimble-figure.is-primary .nimble-figure-label {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nimble-leaf);
+  max-width: 14em;
+}
+
+.nimble-figure.is-sat {
+  opacity: 0.85;
+  padding-bottom: 4px;
+}
+
+.nimble-figure.is-sat .nimble-figure-value {
+  font-size: clamp(20px, 2.6vw, 28px);
+  font-weight: 650;
+  line-height: 1;
   letter-spacing: -0.02em;
-  color: var(--text);
-  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.nimble-figure.is-sat .nimble-figure-label {
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.25;
+  max-width: 10em;
+}
+
+.nimble-figure.is-sat:nth-child(2) {
+  animation-delay: 60ms;
+}
+.nimble-figure.is-sat:nth-child(3) {
+  animation-delay: 100ms;
+}
+.nimble-figure.is-sat:nth-child(4) {
+  animation-delay: 140ms;
+}
+
+.nimble-verdict {
+  margin: 14px 0 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.4;
+  color: #ffffff;
+  animation: nimble-slide-in 420ms ease both;
+  max-width: 40rem;
+}
+
+.nimble-assert-basis {
+  margin-top: 3px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.nimble-summary,
+.nimble-schema {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 40rem;
+}
+
+.nimble-hot {
+  background: transparent;
+  color: inherit;
+  box-shadow: inset 0 -1px 0 rgba(198, 217, 171, 0.55);
+  cursor: default;
+  border-radius: 1px;
+  padding: 0 1px;
+}
+
+.nimble-hot.is-active,
+.nimble-hot:hover {
+  box-shadow: inset 0 -2px 0 var(--nimble-leaf);
+  color: #ffffff;
+}
+
+.nimble-lens {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--nimble-leaf);
+  background: rgba(0, 0, 0, 0.14);
+  max-width: 40rem;
+  animation: nimble-slide-in 220ms ease both;
+}
+
+.nimble-lens-k {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nimble-leaf);
+  margin-bottom: 6px;
+}
+
+.nimble-lens-body {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #ffffff;
+  font-style: normal;
+}
+
+.nimble-lens-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--nimble-leaf);
+  word-break: break-all;
+}
+
+.nimble-section-block + .nimble-section-block {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--nimble-line);
+}
+
+.nimble-section-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nimble-leaf);
+  margin-bottom: 4px;
+}
+
+.nimble-section-body {
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nimble-port-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nimble-port-pill {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--nimble-line);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.nimble-salience {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--nimble-leaf);
+}
+
+.nimble-tip {
+  position: fixed;
+  z-index: 40;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 8px 10px;
+  background: #1c2e18;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes nimble-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nimble-figure-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .nimble-prompt-input {
+  display: block;
+  width: 100%;
+  min-height: 2.2em;
+  max-height: 55vh;
   resize: none;
+  overflow-y: auto;
   border: none;
   outline: none;
   background: transparent;
-  padding: 8px 4px;
-  min-height: 140px;
+  color: var(--nimble-fg);
+  caret-color: #ffffff;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: clamp(18px, 2.6vw, 28px);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  text-align: left;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--nimble-line);
+  field-sizing: content;
 }
 
 .nimble-prompt-input::placeholder {
-  color: color-mix(in srgb, var(--text-dim) 75%, transparent);
-  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
 }
 
-.nimble-prompt-display {
-  padding: 8px 4px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  animation: nimble-settle 480ms ease-out;
+.nimble-prompt-input::spelling-error {
+  text-decoration: underline wavy #ffffff;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  background: transparent;
+  color: #ffffff;
 }
 
-@keyframes nimble-settle {
-  from {
-    letter-spacing: 0.04em;
-    opacity: 0.7;
-  }
-  to {
-    letter-spacing: -0.02em;
-    opacity: 1;
-  }
+.nimble-prompt-input::grammar-error {
+  text-decoration: underline wavy rgba(255, 255, 255, 0.8);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  background: transparent;
+  color: #ffffff;
+}
+
+.nimble-heading {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: clamp(26px, 3.6vw, 40px);
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: -0.02em;
+  color: var(--nimble-fg);
+  text-align: left;
+}
+
+.nimble-unit-hint,
+.nimble-phase,
+.nimble-reject,
+.nimble-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--nimble-muted);
+}
+
+.nimble-phase {
+  color: var(--nimble-leaf);
+  font-style: italic;
+}
+
+.nimble-reject,
+.nimble-error {
+  color: var(--nimble-danger);
 }
 
 .nimble-mark {
   background: transparent;
   color: inherit;
   padding: 0 1px;
-  border-radius: 2px;
-  cursor: help;
-  transition: background 160ms ease, color 160ms ease;
+  border-radius: 1px;
 }
 
 .nimble-mark-contested {
-  box-shadow: inset 0 -2px 0 #f85149;
+  box-shadow: inset 0 -2px 0 var(--nimble-danger);
 }
 
 .nimble-mark-challengeable {
-  box-shadow: inset 0 -2px 0 #d29922;
+  box-shadow: inset 0 -2px 0 var(--nimble-warn);
 }
 
-.nimble-mark:hover {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+.nimble-italic {
+  font-style: italic;
 }
 
-.nimble-mark-legend,
-.nimble-reject,
-.nimble-error {
-  margin: 14px 0 0;
-  font-family: "Segoe UI", system-ui, sans-serif;
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: 0;
+.nimble-pertinent {
+  margin-top: 28px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nimble-mode-line {
+  margin: 0;
+  font-size: 14px;
+  color: var(--nimble-leaf);
+}
+
+.nimble-direct,
+.nimble-answer-headline,
+.nimble-answer-summary,
+.nimble-assertion,
+.nimble-open,
+.nimble-needs-note {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--nimble-fg);
+}
+
+.nimble-answer-headline {
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.nimble-answer-summary {
+  color: var(--nimble-muted);
+}
+
+.nimble-open,
+.nimble-needs-note {
+  color: var(--nimble-muted);
+  font-size: 13px;
+}
+
+.nimble-residual {
+  margin: 0;
+  padding-left: 1.1em;
+  color: var(--nimble-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.nimble-finds-open {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--nimble-line);
+}
+
+.nimble-find-line {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nimble-find-line:hover .nimble-find-title {
+  color: var(--nimble-leaf);
+}
+
+.nimble-find-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nimble-fg);
+}
+
+.nimble-find-claim {
+  font-size: 13px;
   line-height: 1.4;
-  color: var(--text-dim);
+  color: var(--nimble-muted);
 }
 
-.nimble-reject {
-  color: #f85149;
-}
-
-.nimble-orbit {
-  position: absolute;
-  z-index: 3;
+.nimble-secondary {
+  margin-top: 22px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  max-width: 280px;
-  pointer-events: none;
+  align-items: center;
+  justify-content: flex-start;
 }
 
-.nimble-orbit .nimble-chip {
-  pointer-events: auto;
-}
-
-.nimble-orbit-top {
-  top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  justify-content: center;
-  max-width: min(720px, 90%);
-}
-
-.nimble-orbit-left {
-  left: 28px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.nimble-orbit-right {
-  right: 28px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
-  align-items: flex-end;
+.nimble-secondary-label {
+  width: 100%;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nimble-faint);
+  margin-bottom: 2px;
+  text-align: left;
 }
 
 .nimble-chip {
   appearance: none;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--panel) 88%, transparent);
-  color: var(--text-dim);
+  border: 1px solid var(--nimble-line);
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--nimble-muted);
   font-size: 11px;
   line-height: 1.2;
   padding: 4px 8px;
   border-radius: 2px;
-  cursor: default;
-  max-width: 220px;
+  cursor: pointer;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition:
-    color 140ms ease,
-    border-color 140ms ease,
-    transform 180ms ease,
-    background 140ms ease;
 }
 
-.nimble-chip:hover,
-.nimble-chip.active,
-.nimble-chip:focus-visible {
-  color: var(--text);
-  border-color: var(--accent);
-  background: var(--panel-alt);
-  transform: translateY(-1px);
-  outline: none;
-}
-
-.nimble-chip.kind-phase {
-  color: var(--accent);
-  animation: nimble-pulse 1.4s ease-in-out infinite;
-}
-
-.nimble-chip.kind-mode {
-  text-transform: lowercase;
-}
-
-.nimble-chip.kind-find {
-  border-style: dashed;
-}
-
-.nimble-chip.kind-answer {
-  color: #3fb950;
-  border-color: color-mix(in srgb, #3fb950 45%, var(--border));
-}
-
-@keyframes nimble-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-
-.nimble-expand {
-  position: absolute;
-  z-index: 5;
-  left: 50%;
-  bottom: 100px;
-  transform: translateX(-50%);
-  width: min(420px, calc(100% - 48px));
-  padding: 12px 14px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  animation: nimble-expand-in 160ms ease-out;
-  text-align: left;
-}
-
-@keyframes nimble-expand-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-.nimble-expand-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--accent);
-  margin-bottom: 6px;
-}
-
-.nimble-expand-body {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text);
-}
-
-.nimble-expand-drill {
-  margin-top: 10px;
-}
-
-.nimble-viz {
-  position: absolute;
-  z-index: 4;
-  right: 36px;
-  bottom: 88px;
-  width: 148px;
-  padding: 10px 12px 8px;
-  background: color-mix(in srgb, var(--panel) 92%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  animation: nimble-viz-spin-in 500ms ease-out;
-}
-
-@keyframes nimble-viz-spin-in {
-  from {
-    opacity: 0;
-    transform: rotate(-4deg) translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: rotate(0) translateY(0);
-  }
-}
-
-.nimble-viz-dismiss {
-  position: absolute;
-  top: 2px;
-  right: 4px;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 2px 6px;
-}
-
-.nimble-viz-dismiss:hover {
-  color: var(--text);
-}
-
-.nimble-viz-title {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-bottom: 8px;
-}
-
-.nimble-viz-dots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.nimble-viz-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  opacity: 0.85;
-}
-
-.nimble-viz-assert {
-  display: flex;
-  gap: 4px;
-  margin-top: 10px;
-}
-
-.nimble-viz-bar {
-  flex: 1;
-  font-size: 10px;
-  text-align: center;
-  padding: 3px 0;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 2px;
-}
-
-.nimble-viz-hint {
-  margin: 8px 0 0;
-  font-size: 10px;
-  color: var(--text-dim);
-}
-
-.nimble-viz-restore {
-  position: absolute;
-  z-index: 4;
-  right: 36px;
-  bottom: 88px;
-  appearance: none;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text-dim);
-  font-size: 11px;
-  padding: 4px 8px;
-  border-radius: 2px;
-  cursor: pointer;
+.nimble-chip:hover {
+  color: var(--nimble-fg);
+  border-color: var(--nimble-leaf);
 }
 
 .nimble-source-strip {
   flex-shrink: 0;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
+  border-top: 1px solid var(--nimble-line);
+  background: var(--nimble-bg-deep);
   padding: 10px 18px 12px;
-  animation: nimble-expand-in 160ms ease-out;
+  color: var(--nimble-fg);
 }
 
 .nimble-source-top {
@@ -1283,7 +1841,7 @@ a.answer-find-chip:hover {
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--nimble-faint);
 }
 
 .nimble-source-title {
@@ -1295,7 +1853,7 @@ a.answer-find-chip:hover {
   margin: 6px 0;
   font-size: 13px;
   line-height: 1.45;
-  color: var(--text);
+  color: var(--nimble-muted);
 }
 
 .nimble-source-meta {
@@ -1303,11 +1861,11 @@ a.answer-find-chip:hover {
   flex-wrap: wrap;
   gap: 10px 16px;
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--nimble-faint);
 }
 
 .nimble-source-meta a {
-  color: var(--accent);
+  color: var(--nimble-leaf);
   word-break: break-all;
 }
 
@@ -1318,13 +1876,16 @@ a.answer-find-chip:hover {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 18px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
+  border-top: 1px solid var(--nimble-line);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .nimble-dock-hint {
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+  opacity: 0.85;
+  user-select: none;
 }
 
 .nimble-dock-actions {
@@ -1333,34 +1894,65 @@ a.answer-find-chip:hover {
   align-items: center;
 }
 
+.nimble-btn,
+.nimble-btn-ghost {
+  appearance: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 2px;
+}
+
+.nimble-btn {
+  min-width: 2.5rem;
+  border: 1px solid var(--nimble-leaf);
+  background: var(--nimble-leaf);
+  color: var(--nimble-bg-deep);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.nimble-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nimble-btn-ghost {
+  border: 1px solid var(--nimble-line);
+  background: transparent;
+  color: var(--nimble-fg);
+}
+
+.nimble-btn-ghost:hover:not(:disabled) {
+  border-color: var(--nimble-leaf);
+}
+
+.nimble-btn-ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 @media (max-width: 900px) {
   .nimble-stage {
-    padding: 96px 16px 120px;
+    padding: 40px 16px 64px;
   }
 
-  .nimble-orbit-left,
-  .nimble-orbit-right {
-    position: static;
-    transform: none;
-    max-width: none;
-    flex-direction: row;
-    justify-content: center;
-    margin: 0 auto 10px;
-  }
-
-  .nimble-stage {
+  .nimble-stage.is-result {
     flex-direction: column;
-    justify-content: flex-start;
     overflow-y: auto;
   }
 
-  .nimble-frame-ring {
-    display: none;
+  .nimble-rail {
+    width: 100%;
+    max-height: 22vh;
   }
 
-  .nimble-orbit-top {
-    position: static;
-    transform: none;
-    margin-bottom: 12px;
+  .nimble-rail-scroll {
+    max-height: 22vh;
+  }
+
+  .nimble-loading-bar {
+    width: min(180px, 50%);
   }
 }
