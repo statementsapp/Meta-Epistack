@@ -352,3 +352,63 @@ class CriteriaAnswerResult(BaseModel):
     total_tokens: int = 0
     total_cost_usd: float = 0.0
     warnings: list[str] = Field(default_factory=list)
+
+
+class PatchFocus(BaseModel):
+    kind: Literal[
+        "verdict",
+        "summary",
+        "figure",
+        "claim",
+        "assertion",
+        "check",
+        "defeater",
+        "risk",
+        "schema",
+    ]
+    id: str
+    text: str = ""
+
+
+class CriteriaPatchRequest(BaseModel):
+    prompt: str
+    run_id: int
+    model: Optional[str] = None
+    action: Literal["critique", "probe"]
+    note: str = ""
+    focus: PatchFocus
+    answer: CriteriaAnswer
+    gather: Optional[GatherPacket] = None
+    evidence_needs: Optional[EvidenceNeedPlan] = None
+
+
+class PatchOp(BaseModel):
+    op: Literal[
+        "revise_headline",
+        "revise_summary",
+        "revise_assertion",
+        "add_defeater",
+        "add_residual",
+        "add_claim",
+        "mark_open",
+        "annotate",
+    ]
+    target_id: str = ""
+    before: str = ""
+    after: str = ""
+    reason: str = ""
+
+
+class CriteriaPatchResult(BaseModel):
+    run_id: int
+    model: str
+    stub: bool = True
+    action: Literal["critique", "probe"]
+    answer: CriteriaAnswer
+    gather: Optional[GatherPacket] = None
+    ops: list[PatchOp] = Field(default_factory=list)
+    summary_line: str = ""
+    calls: list[CallSummary] = Field(default_factory=list)
+    total_tokens: int = 0
+    total_cost_usd: float = 0.0
+    warnings: list[str] = Field(default_factory=list)

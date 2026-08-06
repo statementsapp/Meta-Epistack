@@ -973,7 +973,8 @@ a.answer-find-chip:hover {
   align-items: flex-start;
   justify-content: center;
   padding: 48px 56px 72px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .nimble-stage.is-blank {
@@ -987,7 +988,7 @@ a.answer-find-chip:hover {
   align-items: stretch;
   justify-content: center;
   gap: 20px;
-  padding: 28px 20px 56px;
+  padding: 28px 20px 48px;
 }
 
 .nimble-stage.is-running .nimble-heading {
@@ -1031,7 +1032,8 @@ a.answer-find-chip:hover {
   transform: translateY(18px);
   transition:
     opacity 380ms ease,
-    transform 480ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transform 480ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 280ms ease;
   z-index: 2;
   align-self: stretch;
   min-height: 0;
@@ -1040,6 +1042,93 @@ a.answer-find-chip:hover {
 .nimble-rail.in {
   opacity: 1;
   transform: translateY(0);
+}
+
+.nimble-rail.is-compact {
+  width: 44px;
+}
+
+.nimble-rail.is-compact.is-expanded,
+.nimble-stage.has-answer .nimble-rail.is-expanded {
+  width: 240px;
+}
+
+.nimble-rail-glyphs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+}
+
+.nimble-glyph-btn {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 2px;
+  min-width: 34px;
+}
+
+.nimble-glyph-btn:hover,
+.nimble-glyph-btn.is-focus {
+  color: #ffffff;
+  border-color: var(--nimble-leaf);
+  background: rgba(198, 217, 171, 0.12);
+}
+
+.nimble-glyph-btn.leaf {
+  color: var(--nimble-leaf);
+  border-color: rgba(198, 217, 171, 0.45);
+}
+
+.nimble-glyph-btn.warn {
+  color: var(--nimble-warn);
+  border-color: rgba(240, 212, 138, 0.4);
+}
+
+.nimble-glyph-n {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nimble-rail-collapse {
+  appearance: none;
+  align-self: flex-end;
+  margin: 0 0 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--nimble-line);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.nimble-rail-collapse:hover {
+  border-color: var(--nimble-leaf);
+  color: #ffffff;
+}
+
+.nimble-fold-list li.is-focused,
+.nimble-section-block.is-focused {
+  color: #ffffff;
+  box-shadow: inset 2px 0 0 var(--nimble-leaf);
+  padding-left: 8px;
+}
+
+.nimble-claim-row.is-focused {
+  color: #ffffff;
+  border-left: 2px solid var(--nimble-leaf);
+  padding-left: 8px;
 }
 
 .nimble-rail-left.in {
@@ -1066,6 +1155,80 @@ a.answer-find-chip:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* While drafting, show checks/defeaters in full ? don't clip informative periphery. */
+.nimble-rail.is-loading-rail .nimble-rail-scroll {
+  max-height: none;
+  overflow: visible;
+}
+
+.nimble-stage:not(.has-answer) {
+  overflow-y: auto;
+}
+
+.nimble-cost-wrap,
+.nimble-cost-inline {
+  position: relative;
+}
+
+.nimble-cost-inline {
+  margin-top: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.nimble-glyph-btn.cost {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nimble-cost-pop {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  z-index: 30;
+  min-width: 168px;
+  max-width: 240px;
+  padding: 8px 10px;
+  background: #1c2e18;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+}
+
+.nimble-cost-pop.is-inline {
+  left: 40px;
+}
+
+.nimble-cost-k {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nimble-leaf);
+  margin-bottom: 6px;
+}
+
+.nimble-cost-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nimble-cost-steps {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.nimble-cost-steps li + li {
+  margin-top: 3px;
 }
 
 .nimble-rail-k {
@@ -1249,6 +1412,8 @@ a.answer-find-chip:hover {
   max-width: 620px;
   min-width: 0;
   align-self: center;
+  overflow: visible;
+  padding-bottom: 24px;
 }
 
 .nimble-stage.is-result .nimble-prompt-block {
@@ -1393,10 +1558,13 @@ a.answer-find-chip:hover {
   align-items: flex-end;
   gap: 16px 28px;
   margin: 20px 0 8px;
+  max-width: 100%;
+  overflow: visible;
 }
 
 .nimble-figure {
   min-width: 0;
+  max-width: min(100%, 28rem);
   animation: nimble-figure-in 480ms cubic-bezier(0.2, 0.85, 0.2, 1) both;
 }
 
@@ -1410,12 +1578,38 @@ a.answer-find-chip:hover {
 }
 
 .nimble-figure.is-primary .nimble-figure-label {
-  margin-top: 6px;
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.78);
+  max-width: min(100%, 28rem);
+  line-height: 1.35;
+  white-space: normal;
+  overflow: visible;
+  word-break: break-word;
+}
+
+.nimble-figure.is-primary .nimble-figure-label.is-long {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.nimble-figure.is-sat .nimble-figure-label {
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--nimble-leaf);
-  max-width: 14em;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.25;
+  max-width: 10em;
+}
+
+.nimble-figure.is-sat .nimble-figure-label.is-long {
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .nimble-figure.is-sat {
@@ -1481,7 +1675,7 @@ a.answer-find-chip:hover {
   background: transparent;
   color: inherit;
   box-shadow: inset 0 -1px 0 rgba(198, 217, 171, 0.55);
-  cursor: default;
+  cursor: pointer;
   border-radius: 1px;
   padding: 0 1px;
 }
@@ -1492,13 +1686,198 @@ a.answer-find-chip:hover {
   color: #ffffff;
 }
 
+.nimble-schema-stamp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 12px;
+  max-width: 40rem;
+}
+
+.nimble-schema-tok {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid rgba(198, 217, 171, 0.35);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nimble-schema-tok:hover,
+.nimble-schema-tok.is-active {
+  color: var(--nimble-leaf);
+  border-bottom-color: var(--nimble-leaf);
+}
+
+/* Focus Mode: click atom -> dim + feedback -> patch */
+.nimble-stage.is-focus-mode .nimble-rail:not(.has-focus),
+.nimble-stage.is-focus-mode .nimble-heading,
+.nimble-stage.is-focus-mode .nimble-above,
+.nimble-stage.is-focus-mode .nimble-atom:not(.is-atom-focus) {
+  opacity: 0.32;
+  transition: opacity 160ms ease;
+}
+
+.nimble-stage.is-focus-mode .nimble-rail.has-focus .nimble-atom:not(.is-atom-focus) {
+  opacity: 0.32;
+}
+
+.nimble-stage.is-focus-mode .nimble-atom.is-atom-focus {
+  opacity: 1;
+  outline: 1px solid rgba(198, 217, 171, 0.55);
+  outline-offset: 3px;
+}
+
+.nimble-stage.is-focus-mode .nimble-focus-dock,
+.nimble-stage.is-focus-mode .nimble-patch-ribbon {
+  opacity: 1;
+}
+
+.nimble-atom {
+  cursor: pointer;
+  transition: opacity 160ms ease, outline-color 160ms ease;
+}
+
+.nimble-atom.is-patched {
+  animation: nimble-patch-flash 1.8s ease-out;
+}
+
+@keyframes nimble-patch-flash {
+  0% {
+    background: rgba(198, 217, 171, 0.28);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.nimble-focus-dock {
+  margin-top: 14px;
+  max-width: 36rem;
+  padding: 10px 12px;
+  border: 1px solid rgba(198, 217, 171, 0.35);
+  background: rgba(8, 28, 18, 0.92);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nimble-focus-dock-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nimble-focus-dock-k {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nimble-leaf);
+}
+
+.nimble-focus-dock-snip {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.35;
+}
+
+.nimble-focus-note {
+  appearance: none;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(198, 217, 171, 0.28);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+}
+
+.nimble-focus-note:focus {
+  outline: none;
+  border-color: var(--nimble-leaf);
+}
+
+.nimble-focus-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.nimble-focus-chip {
+  appearance: none;
+  border: 1px solid rgba(198, 217, 171, 0.45);
+  background: transparent;
+  color: var(--nimble-leaf);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.nimble-focus-chip:hover:not(:disabled) {
+  background: rgba(198, 217, 171, 0.12);
+}
+
+.nimble-focus-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nimble-focus-wait {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.nimble-patch-ribbon {
+  margin-top: 12px;
+  max-width: 36rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-left: 2px solid var(--nimble-leaf);
+  background: rgba(198, 217, 171, 0.08);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.nimble-patch-ribbon.is-stub {
+  border-left-color: rgba(230, 190, 120, 0.75);
+  color: rgba(255, 236, 200, 0.9);
+}
+
 .nimble-lens {
   margin-top: 10px;
   padding: 10px 12px;
   border-left: 2px solid var(--nimble-leaf);
   background: rgba(0, 0, 0, 0.14);
   max-width: 40rem;
+  max-height: none;
+  overflow: visible;
   animation: nimble-slide-in 220ms ease both;
+}
+
+.nimble-lens.is-pinned {
+  border-left-width: 3px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.nimble-lens-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .nimble-lens-k {
@@ -1506,7 +1885,21 @@ a.answer-find-chip:hover {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--nimble-leaf);
-  margin-bottom: 6px;
+}
+
+.nimble-lens-clear {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.nimble-lens-clear:hover {
+  color: #ffffff;
 }
 
 .nimble-lens-body {
@@ -1576,6 +1969,7 @@ a.answer-find-chip:hover {
   line-height: 1.4;
   pointer-events: auto;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  overflow-y: auto;
 }
 
 @keyframes nimble-slide-in {

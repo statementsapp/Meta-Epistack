@@ -10,12 +10,15 @@ import type {
 } from "./types";
 import type {
   AnswerResult,
+  CriteriaAnswer,
   CriteriaObject,
+  CriteriaPatchResult,
   DesignResult,
   EvidenceNeedPlan,
   EvidenceNeedResult,
   GatherPacket,
   GatherResult,
+  PatchFocus,
 } from "./criteria/types";
 
 async function jsonOrThrow(res: Response) {
@@ -112,6 +115,22 @@ export const api = {
     gather?: GatherPacket;
   }): Promise<AnswerResult> =>
     fetch("/api/criteria/answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(jsonOrThrow),
+  patchCriteria: (payload: {
+    prompt: string;
+    run_id: number;
+    model?: string;
+    action: "critique" | "probe";
+    note?: string;
+    focus: PatchFocus;
+    answer: CriteriaAnswer;
+    gather?: GatherPacket;
+    evidence_needs?: EvidenceNeedPlan;
+  }): Promise<CriteriaPatchResult> =>
+    fetch("/api/criteria/patch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

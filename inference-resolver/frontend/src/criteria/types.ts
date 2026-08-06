@@ -325,3 +325,54 @@ export interface GatherResult {
   total_cost_usd: number;
   warnings?: string[];
 }
+
+/** Focus Mode atom — what the user clicked to critique/probe. */
+export type PatchFocusKind =
+  | "verdict"
+  | "summary"
+  | "figure"
+  | "claim"
+  | "assertion"
+  | "check"
+  | "defeater"
+  | "risk"
+  | "schema";
+
+export interface PatchFocus {
+  kind: PatchFocusKind;
+  id: string;
+  text?: string;
+}
+
+export type PatchOpKind =
+  | "revise_headline"
+  | "revise_summary"
+  | "revise_assertion"
+  | "add_defeater"
+  | "add_residual"
+  | "add_claim"
+  | "mark_open"
+  | "annotate";
+
+export interface PatchOp {
+  op: PatchOpKind;
+  target_id: string;
+  before: string;
+  after: string;
+  reason: string;
+}
+
+export interface CriteriaPatchResult {
+  run_id: number;
+  model: string;
+  stub: boolean;
+  action: "critique" | "probe";
+  answer: CriteriaAnswer;
+  gather?: GatherPacket | null;
+  ops: PatchOp[];
+  summary_line: string;
+  calls: CallSummary[];
+  total_tokens: number;
+  total_cost_usd: number;
+  warnings?: string[];
+}

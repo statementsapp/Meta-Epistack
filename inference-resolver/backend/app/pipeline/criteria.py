@@ -22,6 +22,8 @@ from ..models import (
     CriteriaAnswerResult,
     CriteriaDesignResult,
     CriteriaObject,
+    CriteriaPatchRequest,
+    CriteriaPatchResult,
     EvidenceNeedItem,
     EvidenceNeedPlan,
     EvidenceNeedResult,
@@ -29,6 +31,7 @@ from ..models import (
     GatheredFind,
     GatherPacket,
     GatherResult,
+    PatchOp,
     Presupposition,
     SurfaceFeatures,
 )
@@ -1981,3 +1984,161 @@ async def answer_to_criteria(
         answer=out.model_dump(),
     )
     return out
+
+
+def stub_patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
+    """Deterministic focus-mode patch — no LLM. Returns answer + ops for the UI flash.
+
+    Real retrieval/critique LLM wiring comes later; this lets Focus Mode exercise
+    the dim → feedback → patch → flash loop end-to-end.
+    """
+    answer = req.answer.model_copy(deep=True)
+    gather = req.gather.model_copy(deep=True) if req.gather is not None else None
+    ops: list[PatchOp] = []
+    note = (req.note or "").strip()
+    focus_bit = (req.focus.text or req.focus.id or "focus").strip()
+    focus_short = focus_bit[:120]
+
+    if req.action == "critique":
+        challenge = note or f"Challenged under focus: {focus_short}"
+        if answer.assertions:
+            idx = 0
+            if req.focus.kind == "assertion" and req.focus.id.startswith("assertion:"):
+                try:
+                    idx = int(req.focus.id.split(":", 1)[1])
+                except ValueError:
+                    idx = 0
+            idx = max(0, min(idx, len(answer.assertions) - 1))
+            target = answer.assertions[idx]
+            before = target.statement
+            target.defeaters = list(target.defeaters) + [
+                AnswerDefeater(text=challenge, salience="high", find_ids=[])
+            ]
+            softened = before
+            if not softened.lower().startswith("provisionally,"):
+                softened = f"Provisionally, {before[0].lower()}{before[1:]}" if before else before
+            target.statement = softened
+            ops.append(
+                PatchOp(
+                    op="add_defeater",
+                    target_id=f"assertion:{idx}",
+                    before="",
+                    after=challenge,
+                    reason="critique",
+                )
+            )
+            if softened != before:
+                ops.append(
+                    PatchOp(
+                        op="revise_assertion",
+                        target_id=f"assertion:{idx}",
+                        before=before,
+                        after=softened,
+                        reason="critique softened assertion pending review",
+                    )
+                )
+        else:
+            answer.residual_uncertainty = list(answer.residual_uncertainty) + [challenge]
+            ops.append(
+                PatchOp(
+                    op="add_residual",
+                    target_id="risk:new",
+                    before="",
+                    after=challenge,
+                    reason="critique with no assertion to attach",
+                )
+            )
+
+        if answer.headline and "provisionally" not in answer.headline.lower():
+            before_h = answer.headline
+            answer.headline = f"Provisionally: {before_h}"
+            ops.append(
+                PatchOp(
+                    op="revise_headline",
+                    target_id="verdict",
+                    before=before_h,
+                    after=answer.headline,
+                    reason="critique",
+                )
+            )
+        summary_line = "Critique applied · defeater noted · stance softened"
+    else:
+        # probe
+        probe_line = note or f"Probe opened on: {focus_short}"
+        answer.residual_uncertainty = list(answer.residual_uncertainty) + [
+            f"OPEN probe: {probe_line}"
+        ]
+        ops.append(
+            PatchOp(
+                op="mark_open",
+                target_id=req.focus.id or req.focus.kind,
+                before="",
+                after=probe_line,
+                reason="probe",
+            )
+        )
+        ops.append(
+            PatchOp(
+                op="add_residual",
+                target_id="risk:new",
+                before="",
+                after=f"OPEN probe: {probe_line}",
+                reason="probe queued as residual uncertainty",
+            )
+        )
+
+        # Stub claim so the claims rail can flash a new receipt.
+        if gather is not None:
+            new_id = f"stub-probe-{len(gather.finds) + 1}"
+            claim_text = (
+                f"[stub probe] Need evidence regarding: {probe_line}"
+            )
+            gather.finds = list(gather.finds) + [
+                GatheredFind(
+                    id=new_id,
+                    need_kind="scope",
+                    need_statement=probe_line,
+                    claim=claim_text,
+                    source_title="Patch stub (no live retrieval)",
+                    source_url="",
+                    source_publisher="stub",
+                    quoted_or_paraphrase="",
+                    published_at="",
+                    confidence_note="stub — replace with live gather",
+                    salience="medium",
+                )
+            ]
+            ops.append(
+                PatchOp(
+                    op="add_claim",
+                    target_id=f"claim:{new_id}",
+                    before="",
+                    after=claim_text,
+                    reason="probe stub claim (awaiting live retrieval)",
+                )
+            )
+            summary_line = "Probe queued · open residual · stub claim added"
+        else:
+            summary_line = "Probe queued · open residual added"
+
+    ops.append(
+        PatchOp(
+            op="annotate",
+            target_id=req.focus.id or req.focus.kind,
+            before=req.focus.text,
+            after=f"{req.action}: {note or focus_short}",
+            reason="focus feedback",
+        )
+    )
+
+    return CriteriaPatchResult(
+        run_id=req.run_id,
+        model=req.model or "stub",
+        stub=True,
+        action=req.action,
+        answer=answer,
+        gather=gather,
+        ops=ops,
+        summary_line=summary_line,
+        warnings=["Patch stub — no LLM / no live retrieval yet."],
+    )

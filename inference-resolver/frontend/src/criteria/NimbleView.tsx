@@ -14,6 +14,8 @@ import {
   type EvidenceNeedPlan,
   type GatheredFind,
   type GatherPacket,
+  type PatchFocus,
+  type PatchFocusKind,
   type Presupposition,
 } from "./types";
 import { questionToHeading } from "./questionToHeading";
@@ -21,11 +23,14 @@ import {
   annotateSummary,
   buildLensTargets,
   buildLexicon,
+  pickTarget,
   resolveSpans,
   type LensTarget,
 } from "./summaryLens";
 
 type FlowPhase = "idle" | "design" | "audit" | "needs" | "gather" | "answer";
+
+type AtomFocus = PatchFocus & { label: string };
 
 /** First sentence/question only — Nimble takes input one unit at a time. */
 function firstUnit(raw: string): string {
@@ -53,15 +58,16 @@ function renderHotSummary(
   hot: { span: { id: string; start: number; end: number; text: string }; target: LensTarget }[],
   handlers: {
     activeId: string | null;
-    onEnter: (spanId: string, target: LensTarget) => void;
+    onEnter: (spanId: string, target: LensTarget, index: number) => void;
     onLeave: (spanId: string) => void;
+    onClick: (spanId: string, target: LensTarget, index: number) => void;
   },
 ): ReactNode {
   if (!hot.length) return summary;
   const nodes: ReactNode[] = [];
   let cursor = 0;
-  for (const { span, target } of hot) {
-    if (span.start < cursor) continue;
+  hot.forEach(({ span, target }, index) => {
+    if (span.start < cursor) return;
     if (span.start > cursor) {
       nodes.push(summary.slice(cursor, span.start));
     }
@@ -70,16 +76,55 @@ function renderHotSummary(
       <mark
         key={span.id}
         className={`nimble-hot${active ? " is-active" : ""}`}
-        onMouseEnter={() => handlers.onEnter(span.id, target)}
+        tabIndex={0}
+        onMouseEnter={() => handlers.onEnter(span.id, target, index)}
         onMouseLeave={() => handlers.onLeave(span.id)}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handlers.onClick(span.id, target, index);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            handlers.onClick(span.id, target, index);
+          }
+        }}
       >
         {summary.slice(span.start, span.end)}
       </mark>,
     );
     cursor = span.end;
-  }
+  });
   if (cursor < summary.length) nodes.push(summary.slice(cursor));
   return nodes;
+}
+
+/** Quiet schema stamp tokens — axes / horizon crumbs. */
+function schemaStampTokens(schema: string): string[] {
+  const cleaned = schema
+    .replace(/^(working\s+)?(query\s+)?schema\s*:?\s*/i, "")
+    .trim();
+  if (!cleaned) return [];
+  const parts = cleaned.split(/[;|·]/).flatMap((p) =>
+    p
+      .replace(/^(horizon|axes|time|scope)\s*:?\s*/i, "")
+      .split(/,(?![^(]*\))/)
+      .map((s) => s.trim()),
+  );
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    const t = p.replace(/\s+/g, " ").trim();
+    if (t.length < 3 || t.length > 48) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 function escapeAttr(s: string): string {
@@ -103,6 +148,16 @@ function clipText(text: string, max: number, expanded: boolean): string {
   const t = text.trim();
   if (expanded || t.length <= max || t.length - max < MIN_TRUNC_SAVE) return t;
   return `${t.slice(0, max - 1).trimEnd()}…`;
+}
+
+/** Prefer cutting on a word boundary so figure labels never end mid-word. */
+function clipWords(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const slice = t.slice(0, max);
+  const sp = slice.lastIndexOf(" ");
+  const cut = sp >= Math.floor(max * 0.55) ? slice.slice(0, sp) : slice;
+  return `${cut.trimEnd()}…`;
 }
 
 function markupInHeading(
@@ -176,13 +231,44 @@ export function NimbleView() {
     url?: string;
     x: number;
     y: number;
+    maxH?: number;
+    placeAbove?: boolean;
   } | null>(null);
   const [lens, setLens] = useState<{
     spanId: string;
     target: LensTarget;
+    pinned: boolean;
+    index: number;
+  } | null>(null);
+  const [leftExpanded, setLeftExpanded] = useState(false);
+  const [rightExpanded, setRightExpanded] = useState(false);
+  const [leftHover, setLeftHover] = useState(false);
+  const [rightHover, setRightHover] = useState(false);
+  const [leftSession, setLeftSession] = useState(0);
+  const [rightSession, setRightSession] = useState(0);
+  const [costHover, setCostHover] = useState(false);
+  const [runMeter, setRunMeter] = useState({
+    tokens: 0,
+    cost: 0,
+    calls: 0,
+    steps: [] as { phase: string; tokens: number; cost: number }[],
+  });
+  const [atomFocus, setAtomFocus] = useState<AtomFocus | null>(null);
+  const [focusNote, setFocusNote] = useState("");
+  const [patching, setPatching] = useState(false);
+  const [patchFlash, setPatchFlash] = useState<string[]>([]);
+  const [patchRibbon, setPatchRibbon] = useState<{
+    line: string;
+    stub: boolean;
+    action: "critique" | "probe";
   } | null>(null);
   const tipTimer = useRef<number | null>(null);
   const lensTimer = useRef<number | null>(null);
+  const leftRailTimer = useRef<number | null>(null);
+  const rightRailTimer = useRef<number | null>(null);
+  const costTimer = useRef<number | null>(null);
+  const patchFlashTimer = useRef<number | null>(null);
+  const focusNoteRef = useRef<HTMLInputElement>(null);
 
   const generationRef = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -281,8 +367,16 @@ export function NimbleView() {
   const summaryText = answer?.answer?.summary?.trim() || "";
   const assertions = answer?.answer?.assertions ?? [];
 
-  const summaryHot = useMemo(() => {
-    if (!summaryText) return [] as { span: { id: string; start: number; end: number; text: string }; target: LensTarget }[];
+  const summaryHotBundle = useMemo(() => {
+    if (!summaryText) {
+      return {
+        hot: [] as {
+          span: { id: string; start: number; end: number; text: string };
+          target: LensTarget;
+        }[],
+        targets: [] as LensTarget[],
+      };
+    }
     const targets = buildLensTargets({
       finds: allFinds,
       assertions,
@@ -291,10 +385,13 @@ export function NimbleView() {
       defeaterHunts: defeaterNeeds,
       risks: answer?.answer?.residual_uncertainty ?? [],
     });
-    if (!targets.length) return [];
+    if (!targets.length) return { hot: [], targets: [] };
     const lexicon = buildLexicon(targets);
     const spans = annotateSummary(summaryText, lexicon, 10);
-    return resolveSpans(spans, targets, assertions);
+    return {
+      hot: resolveSpans(spans, targets, assertions),
+      targets,
+    };
   }, [
     summaryText,
     allFinds,
@@ -304,37 +401,234 @@ export function NimbleView() {
     defeaterNeeds,
     answer?.answer?.residual_uncertainty,
   ]);
+  const summaryHot = summaryHotBundle.hot;
+  const lensTargets = summaryHotBundle.targets;
 
-  const showLens = (spanId: string, target: LensTarget) => {
+  const schemaTokens = useMemo(
+    () =>
+      schemaStampTokens(answer?.answer?.working_query_schema?.trim() || ""),
+    [answer?.answer?.working_query_schema],
+  );
+
+  const showLens = (
+    spanId: string,
+    target: LensTarget,
+    index: number,
+    pinned = false,
+  ) => {
     if (lensTimer.current) window.clearTimeout(lensTimer.current);
-    setLens({ spanId, target });
+    setLens((cur) => {
+      if (cur?.pinned && !pinned) return cur;
+      return { spanId, target, pinned, index };
+    });
+  };
+
+  const pinLens = (spanId: string, target: LensTarget, index: number) => {
+    if (lensTimer.current) window.clearTimeout(lensTimer.current);
+    setLens({ spanId, target, pinned: true, index });
   };
 
   const hideLens = (spanId?: string) => {
     lensTimer.current = window.setTimeout(() => {
       setLens((cur) => {
-        if (!cur) return null;
+        if (!cur || cur.pinned) return cur;
         if (spanId && cur.spanId !== spanId) return cur;
         return null;
       });
     }, 100);
   };
 
+  const clearFocus = () => {
+    if (lensTimer.current) window.clearTimeout(lensTimer.current);
+    setLens(null);
+  };
+
+  const clearAtomFocus = () => {
+    setAtomFocus(null);
+    setFocusNote("");
+    setPatching(false);
+  };
+
+  const enterAtomFocus = (next: AtomFocus) => {
+    setAtomFocus(next);
+    setTip(null);
+    if (next.kind === "claim") setRightExpanded(true);
+    if (
+      next.kind === "check" ||
+      next.kind === "defeater" ||
+      next.kind === "risk"
+    ) {
+      setLeftExpanded(true);
+    }
+    queueMicrotask(() => focusNoteRef.current?.focus());
+  };
+
+  const atomLit = (id: string) => atomFocus?.id === id;
+  const atomFlashed = (id: string) => patchFlash.includes(id);
+  const atomClass = (...parts: (string | false | undefined)[]) =>
+    parts.filter(Boolean).join(" ");
+
+  const applyAtomPatch = async (action: "critique" | "probe") => {
+    if (!atomFocus || !answer || !committed || patching) return;
+    setPatching(true);
+    setError(null);
+    try {
+      const result = await api.patchCriteria({
+        prompt: committed,
+        run_id: answer.run_id,
+        model: model || undefined,
+        action,
+        note: focusNote,
+        focus: {
+          kind: atomFocus.kind,
+          id: atomFocus.id,
+          text: atomFocus.text,
+        },
+        answer: answer.answer,
+        gather: gather ?? undefined,
+        evidence_needs: needsPlan ?? undefined,
+      });
+      setAnswer((prev) =>
+        prev
+          ? {
+              ...prev,
+              answer: result.answer,
+              gather: result.gather ?? prev.gather,
+            }
+          : prev,
+      );
+      if (result.gather) setGather(result.gather);
+      const flash = new Set(
+        result.ops.map((o) => o.target_id).filter(Boolean),
+      );
+      flash.add(atomFocus.id);
+      if (patchFlashTimer.current) window.clearTimeout(patchFlashTimer.current);
+      setPatchFlash([...flash]);
+      patchFlashTimer.current = window.setTimeout(() => setPatchFlash([]), 2200);
+      setPatchRibbon({
+        line: result.summary_line || `${action} applied`,
+        stub: result.stub,
+        action: result.action,
+      });
+      setFocusNote("");
+      if (action === "probe") setRightExpanded(true);
+      if (action === "critique") setLeftExpanded(true);
+      addMeter("patch", result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPatching(false);
+    }
+  };
+
+  const addMeter = (
+    phaseName: string,
+    partial?: { total_tokens?: number; total_cost_usd?: number; calls?: { length: number }[] | unknown[] },
+  ) => {
+    const tokens = partial?.total_tokens ?? 0;
+    const cost = partial?.total_cost_usd ?? 0;
+    const calls = Array.isArray(partial?.calls) ? partial!.calls!.length : 0;
+    if (!tokens && !cost && !calls) return;
+    setRunMeter((m) => ({
+      tokens: m.tokens + tokens,
+      cost: m.cost + cost,
+      calls: m.calls + calls,
+      steps: [...m.steps, { phase: phaseName, tokens, cost }],
+    }));
+  };
+
+  const openLeftRail = () => {
+    if (leftRailTimer.current) window.clearTimeout(leftRailTimer.current);
+    setLeftHover(true);
+  };
+  const scheduleCloseLeftRail = () => {
+    if (leftRailTimer.current) window.clearTimeout(leftRailTimer.current);
+    leftRailTimer.current = window.setTimeout(() => {
+      setLeftHover(false);
+      setLeftExpanded(false);
+      // Remount folds closed on next open — don't resume half-expanded state.
+      setLeftSession((s) => s + 1);
+    }, 160);
+  };
+  const openRightRail = () => {
+    if (rightRailTimer.current) window.clearTimeout(rightRailTimer.current);
+    setRightHover(true);
+  };
+  const scheduleCloseRightRail = () => {
+    if (rightRailTimer.current) window.clearTimeout(rightRailTimer.current);
+    rightRailTimer.current = window.setTimeout(() => {
+      setRightHover(false);
+      setRightExpanded(false);
+      setRightSession((s) => s + 1);
+    }, 160);
+  };
+  const openCost = () => {
+    if (costTimer.current) window.clearTimeout(costTimer.current);
+    setCostHover(true);
+  };
+  const scheduleCloseCost = () => {
+    if (costTimer.current) window.clearTimeout(costTimer.current);
+    costTimer.current = window.setTimeout(() => setCostHover(false), 140);
+  };
+
+  const activateToken = (token: string, pin = false) => {
+    const span = {
+      id: `tok-${token.toLowerCase()}`,
+      start: 0,
+      end: token.length,
+      text: token,
+      targetIds: lensTargets.map((t) => t.id),
+    };
+    const target = pickTarget(span, lensTargets, assertions);
+    if (!target) return;
+    if (pin) pinLens(span.id, target, -1);
+    else showLens(span.id, target, -1, false);
+  };
+
+  const focusKind = lens?.target.kind ?? null;
+  const focusedClaimId =
+    lens?.target.kind === "claim"
+      ? lens.target.id.replace(/^claim:/, "")
+      : null;
+
   useEffect(() => {
     setLens(null);
   }, [summaryText]);
 
   useEffect(() => {
+    // After answer lands, collapse rails to glyphs.
+    if (answer) {
+      setLeftExpanded(false);
+      setRightExpanded(false);
+    }
+  }, [answer?.run_id]);
+
+  useEffect(() => {
+    if (!lens?.pinned) return;
+    if (lens.target.kind === "claim") setRightExpanded(true);
+    if (
+      lens.target.kind === "check" ||
+      lens.target.kind === "defeater" ||
+      lens.target.kind === "risk"
+    ) {
+      setLeftExpanded(true);
+    }
+  }, [lens?.spanId, lens?.target.kind, lens?.pinned]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setDrilledFind(null);
-        setTip(null);
-        setLens(null);
+      if (e.key !== "Escape") return;
+      if (atomFocus) {
+        clearAtomFocus();
+        return;
       }
+      setDrilledFind(null);
+      setTip(null);
+      clearFocus();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [atomFocus]);
 
   const resetFlow = () => {
     generationRef.current += 1;
@@ -348,6 +642,15 @@ export function NimbleView() {
     setDrilledFind(null);
     setTip(null);
     setLens(null);
+    clearAtomFocus();
+    setPatchFlash([]);
+    setPatchRibbon(null);
+    setLeftExpanded(false);
+    setRightExpanded(false);
+    setLeftHover(false);
+    setRightHover(false);
+    setCostHover(false);
+    setRunMeter({ tokens: 0, cost: 0, calls: 0, steps: [] });
   };
 
   const onEdit = () => {
@@ -371,6 +674,10 @@ export function NimbleView() {
     setGather(null);
     setAnswer(null);
     setDrilledFind(null);
+    clearAtomFocus();
+    setPatchFlash([]);
+    setPatchRibbon(null);
+    setRunMeter({ tokens: 0, cost: 0, calls: 0, steps: [] });
 
     try {
       // Fast path: return ports before applicability audit so the UI can prime.
@@ -379,6 +686,7 @@ export function NimbleView() {
       });
       if (generationRef.current !== gen) return;
       setDesign(designed);
+      addMeter("design", designed);
 
       if (!designed.bouncer.admitted || !designed.criteria || designed.run_id == null) {
         setRunning(false);
@@ -399,6 +707,7 @@ export function NimbleView() {
         });
         if (generationRef.current !== gen) return;
         setDesign(audited);
+        addMeter("audit", audited);
         if (!audited.criteria) {
           setRunning(false);
           setPhase("idle");
@@ -427,6 +736,7 @@ export function NimbleView() {
         if (generationRef.current !== gen) return;
         plan = needs.evidence_needs;
         setNeedsPlan(plan);
+        addMeter("needs", needs);
       } catch (e) {
         if (generationRef.current !== gen) return;
         setError((e as Error).message);
@@ -449,6 +759,7 @@ export function NimbleView() {
           plan = gathered.evidence_needs;
           setGather(packet);
           setNeedsPlan(plan);
+          addMeter("gather", gathered);
         } catch (e) {
           if (generationRef.current !== gen) return;
           setError((e as Error).message);
@@ -468,6 +779,7 @@ export function NimbleView() {
         });
         if (generationRef.current !== gen) return;
         setAnswer(answered);
+        addMeter("answer", answered);
         if (answered.gather) setGather(answered.gather);
         if (answered.evidence_needs) setNeedsPlan(answered.evidence_needs);
       } catch (e) {
@@ -499,11 +811,43 @@ export function NimbleView() {
   const stageClass = [
     "nimble-stage",
     committed == null ? "is-blank" : "is-result",
+    answer ? "has-answer" : "",
     running ? "is-running" : "",
     phase !== "idle" ? `phase-${phase}` : "",
+    atomFocus ? "is-focus-mode" : "",
   ]
     .filter(Boolean)
     .join(" ");
+
+  const focusPlaceholder = (() => {
+    if (!atomFocus) return "";
+    switch (atomFocus.kind) {
+      case "verdict":
+      case "assertion":
+      case "summary":
+        return "What would defeat this? Or note a probe…";
+      case "claim":
+        return "Why distrust / what to corroborate?";
+      case "figure":
+        return "Misread quantity? Need as-of date?";
+      case "check":
+        return "Too weak? Fetch the observation?";
+      case "defeater":
+        return "Dismiss, strengthen, or hunt now?";
+      case "risk":
+        return "Still open — challenge or probe?";
+      case "schema":
+        return "Wrong partition / missing class?";
+      default:
+        return "Optional note…";
+    }
+  })();
+
+  const railsCompact = !!answer;
+  const leftOpen = leftExpanded || leftHover;
+  const rightOpen = rightExpanded || rightHover;
+  const leftCompact = railsCompact && !leftOpen;
+  const rightCompact = railsCompact && !rightOpen;
 
   const showTip = (
     key: string,
@@ -522,12 +866,22 @@ export function NimbleView() {
     }
     const r = el.getBoundingClientRect();
     const width = 320;
+    const maxH = Math.min(280, window.innerHeight - 24);
+    const below = r.bottom + 8;
+    const above = r.top - 8;
+    // Prefer below; flip above when the panel would clip the viewport bottom.
+    const placeAbove = below + Math.min(160, maxH) > window.innerHeight - 12;
+    const y = placeAbove
+      ? Math.max(8, above - Math.min(maxH, 200))
+      : Math.min(below, window.innerHeight - Math.min(maxH, 160) - 8);
     setTip({
       key,
       text: full,
       url: url?.trim() || undefined,
       x: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
-      y: Math.min(r.bottom + 8, window.innerHeight - 140),
+      y,
+      maxH,
+      placeAbove,
     });
   };
 
@@ -553,7 +907,12 @@ export function NimbleView() {
 
   return (
     <div className="nimble-view">
-      <div className={stageClass}>
+      <div
+        className={stageClass}
+        onClick={() => {
+          if (atomFocus) clearAtomFocus();
+        }}
+      >
         {running && (
           <div className="nimble-loading-bar" aria-hidden>
             <span
@@ -576,11 +935,153 @@ export function NimbleView() {
           <aside
             className={`nimble-rail nimble-rail-left${
               criteria || needsPlan || answer ? " in" : ""
-            }`}
+            }${leftCompact ? " is-compact" : ""}${leftOpen && railsCompact ? " is-expanded" : ""}${!answer ? " is-loading-rail" : ""}${(focusKind && ["check", "defeater", "risk"].includes(focusKind)) || (atomFocus && ["check", "defeater", "risk"].includes(atomFocus.kind)) ? " has-focus" : ""}`}
+            onMouseEnter={() => {
+              if (railsCompact) openLeftRail();
+            }}
+            onMouseLeave={() => {
+              if (railsCompact) scheduleCloseLeftRail();
+            }}
           >
+            {leftCompact ? (
+              <div className="nimble-rail-glyphs" role="toolbar" aria-label="Left periphery">
+                {criteria?.required_ports?.length ? (
+                  <button
+                    type="button"
+                    className="nimble-glyph-btn"
+                    title={`ports · ${criteria.required_ports.length}`}
+                    onMouseEnter={openLeftRail}
+                    onClick={() => setLeftExpanded((v) => !v)}
+                  >
+                    <span aria-hidden>⌗</span>
+                    <span className="nimble-glyph-n">
+                      {criteria.required_ports.length}
+                    </span>
+                  </button>
+                ) : null}
+                {openText ? (
+                  <button
+                    type="button"
+                    className="nimble-glyph-btn leaf"
+                    title="open"
+                    onMouseEnter={openLeftRail}
+                    onClick={() => setLeftExpanded((v) => !v)}
+                  >
+                    <span aria-hidden>○</span>
+                  </button>
+                ) : null}
+                {settlementNeeds.length > 0 && (
+                  <button
+                    type="button"
+                    className={`nimble-glyph-btn${focusKind === "check" ? " is-focus" : ""}`}
+                    title={`checks · ${settlementNeeds.length}`}
+                    onMouseEnter={openLeftRail}
+                    onClick={() => setLeftExpanded((v) => !v)}
+                  >
+                    <span aria-hidden>▢</span>
+                    <span className="nimble-glyph-n">{settlementNeeds.length}</span>
+                  </button>
+                )}
+                {(defeaterNeeds.length > 0 || defeaters.length > 0) && (
+                  <button
+                    type="button"
+                    className={`nimble-glyph-btn warn${focusKind === "defeater" ? " is-focus" : ""}`}
+                    title={`defeaters · ${defeaterNeeds.length || defeaters.length}`}
+                    onMouseEnter={openLeftRail}
+                    onClick={() => setLeftExpanded((v) => !v)}
+                  >
+                    <span aria-hidden>▿</span>
+                    <span className="nimble-glyph-n">
+                      {defeaterNeeds.length || defeaters.length}
+                    </span>
+                  </button>
+                )}
+                {(answer?.answer?.residual_uncertainty?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className={`nimble-glyph-btn warn${focusKind === "risk" ? " is-focus" : ""}`}
+                    title={`risks · ${answer!.answer.residual_uncertainty.length}`}
+                    onMouseEnter={openLeftRail}
+                    onClick={() => setLeftExpanded((v) => !v)}
+                  >
+                    <span aria-hidden>△</span>
+                    <span className="nimble-glyph-n">
+                      {answer!.answer.residual_uncertainty.length}
+                    </span>
+                  </button>
+                )}
+                {(runMeter.calls > 0 || running) && (
+                  <div
+                    className="nimble-cost-wrap"
+                    onMouseEnter={openCost}
+                    onMouseLeave={scheduleCloseCost}
+                  >
+                    <button
+                      type="button"
+                      className={`nimble-glyph-btn cost${costHover ? " is-focus" : ""}`}
+                      title="run cost"
+                    >
+                      <span aria-hidden>$</span>
+                      <span className="nimble-glyph-n">
+                        {runMeter.calls || "·"}
+                      </span>
+                    </button>
+                    {costHover && (
+                      <div className="nimble-cost-pop">
+                        <div className="nimble-cost-k">run</div>
+                        <div className="nimble-cost-row">
+                          <span>tokens</span>
+                          <span>{runMeter.tokens.toLocaleString()}</span>
+                        </div>
+                        <div className="nimble-cost-row">
+                          <span>cost</span>
+                          <span>${runMeter.cost.toFixed(4)}</span>
+                        </div>
+                        <div className="nimble-cost-row">
+                          <span>calls</span>
+                          <span>{runMeter.calls}</span>
+                        </div>
+                        {runMeter.steps.length > 0 && (
+                          <ul className="nimble-cost-steps">
+                            {runMeter.steps.map((s, i) => (
+                              <li key={`${s.phase}-${i}`}>
+                                {s.phase}
+                                {s.tokens
+                                  ? ` · ${s.tokens.toLocaleString()} tok`
+                                  : ""}
+                                {s.cost ? ` · $${s.cost.toFixed(4)}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="nimble-rail-scroll">
+              {railsCompact && (
+                <button
+                  type="button"
+                  className="nimble-rail-collapse"
+                  onClick={() => {
+                    setLeftExpanded(false);
+                    setLeftHover(false);
+                    setLeftSession((s) => s + 1);
+                  }}
+                  title="Collapse"
+                >
+                  «
+                </button>
+              )}
               {criteria?.required_ports?.length ? (
-                <details className="nimble-fold">
+                <details
+                  className="nimble-fold"
+                  {...(focusKind === null && pipelineFoldsOpen
+                    ? {}
+                    : {})}
+                >
                   <summary className="nimble-fold-sum">
                     <span className="nimble-fold-glyph" aria-hidden>
                       ⌗
@@ -603,8 +1104,8 @@ export function NimbleView() {
               {openText && (
                 <details
                   className="nimble-open-fold"
-                  key={`open-${design?.run_id ?? "x"}`}
-                  open
+                  key={`open-${design?.run_id ?? "x"}-${leftSession}`}
+                  {...(!answer || pipelineFoldsOpen ? { open: true } : {})}
                 >
                   <summary className="nimble-open-sum">
                     <span className="nimble-open-glyph" aria-hidden>
@@ -619,7 +1120,7 @@ export function NimbleView() {
               {settlementNeeds.length > 0 && (
                 <details
                   className="nimble-fold"
-                  key={`checks-${pipelineFoldsOpen ? "fill" : "side"}`}
+                  key={`checks-${leftSession}-${pipelineFoldsOpen ? "fill" : "side"}`}
                   {...(pipelineFoldsOpen ? { open: true } : {})}
                 >
                   <summary className="nimble-fold-sum">
@@ -632,8 +1133,30 @@ export function NimbleView() {
                   <ul className="nimble-fold-list">
                     {settlementNeeds.map((n, i) => {
                       const key = `settle-${i}`;
+                      const id = `check:${i}`;
+                      const active = lens?.target.id === id || atomLit(id);
                       return (
-                        <li key={key} {...soft(key, n.statement, 56)}>
+                        <li
+                          key={key}
+                          className={atomClass(
+                            "nimble-atom",
+                            active && "is-focused",
+                            atomLit(id) && "is-atom-focus",
+                            atomFlashed(id) && "is-patched",
+                          )}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            enterAtomFocus({
+                              kind: "check",
+                              id,
+                              text: n.statement,
+                              label: "check",
+                            });
+                          }}
+                          {...soft(key, n.statement, 56)}
+                        >
                           {trunc(n.statement, 56)}
                         </li>
                       );
@@ -645,7 +1168,7 @@ export function NimbleView() {
               {defeaterNeeds.length > 0 && (
                 <details
                   className="nimble-fold"
-                  key={`hunts-${pipelineFoldsOpen ? "fill" : "side"}`}
+                  key={`hunts-${leftSession}-${pipelineFoldsOpen ? "fill" : "side"}`}
                   {...(pipelineFoldsOpen ? { open: true } : {})}
                 >
                   <summary className="nimble-fold-sum">
@@ -658,8 +1181,30 @@ export function NimbleView() {
                   <ul className="nimble-fold-list">
                     {defeaterNeeds.map((n, i) => {
                       const key = `hunt-${i}`;
+                      const id = `hunt:${i}`;
+                      const active = lens?.target.id === id || atomLit(id);
                       return (
-                        <li key={key} {...soft(key, n.statement, 56)}>
+                        <li
+                          key={key}
+                          className={atomClass(
+                            "nimble-atom",
+                            active && "is-focused",
+                            atomLit(id) && "is-atom-focus",
+                            atomFlashed(id) && "is-patched",
+                          )}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            enterAtomFocus({
+                              kind: "defeater",
+                              id,
+                              text: n.statement,
+                              label: "defeater",
+                            });
+                          }}
+                          {...soft(key, n.statement, 56)}
+                        >
                           {trunc(n.statement, 56)}
                         </li>
                       );
@@ -669,7 +1214,10 @@ export function NimbleView() {
               )}
 
               {(answer?.answer?.residual_uncertainty?.length ?? 0) > 0 && (
-                <details className="nimble-fold">
+                <details
+                  className="nimble-fold"
+                  key={`risks-${leftSession}`}
+                >
                   <summary className="nimble-fold-sum">
                     <span className="nimble-fold-glyph warn" aria-hidden>
                       △
@@ -682,8 +1230,32 @@ export function NimbleView() {
                   <ul className="nimble-fold-list">
                     {answer!.answer.residual_uncertainty.map((u, i) => {
                       const key = `risk-${i}`;
+                      const id = `risk:${i}`;
+                      const active = lens?.target.id === id || atomLit(id);
                       return (
-                        <li key={key} {...soft(key, u, 64)}>
+                        <li
+                          key={key}
+                          className={atomClass(
+                            "nimble-atom",
+                            active && "is-focused",
+                            atomLit(id) && "is-atom-focus",
+                            (atomFlashed(id) ||
+                              atomFlashed("risk:new")) &&
+                              "is-patched",
+                          )}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            enterAtomFocus({
+                              kind: "risk",
+                              id,
+                              text: u,
+                              label: "risk",
+                            });
+                          }}
+                          {...soft(key, u, 64)}
+                        >
                           {trunc(u, 64)}
                         </li>
                       );
@@ -693,7 +1265,10 @@ export function NimbleView() {
               )}
 
               {defeaters.length > 0 && (
-                <details className="nimble-fold">
+                <details
+                  className="nimble-fold"
+                  key={`defs-${leftSession}`}
+                >
                   <summary className="nimble-fold-sum">
                     <span className="nimble-fold-glyph danger" aria-hidden>
                       ✕
@@ -704,8 +1279,28 @@ export function NimbleView() {
                   <ul className="nimble-fold-list">
                     {defeaters.map((d, i) => {
                       const key = `def-${i}`;
+                      const id = `defeater:${i}`;
                       return (
-                        <li key={key} {...soft(key, d.text, 56)}>
+                        <li
+                          key={key}
+                          className={atomClass(
+                            "nimble-atom",
+                            atomLit(id) && "is-atom-focus",
+                            atomFlashed(id) && "is-patched",
+                          )}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            enterAtomFocus({
+                              kind: "defeater",
+                              id,
+                              text: d.text,
+                              label: "defeater",
+                            });
+                          }}
+                          {...soft(key, d.text, 56)}
+                        >
                           <span className="nimble-salience">{d.salience}</span>{" "}
                           {trunc(d.text, 52)}
                         </li>
@@ -745,7 +1340,49 @@ export function NimbleView() {
                   {trunc(needsPlan.note, 80)}
                 </div>
               )}
+
+              {(runMeter.calls > 0 || running) && !railsCompact && (
+                <div
+                  className="nimble-cost-inline"
+                  onMouseEnter={openCost}
+                  onMouseLeave={scheduleCloseCost}
+                >
+                  <button type="button" className="nimble-glyph-btn cost">
+                    <span aria-hidden>$</span>
+                    <span className="nimble-glyph-n">{runMeter.calls || "·"}</span>
+                  </button>
+                  {costHover && (
+                    <div className="nimble-cost-pop is-inline">
+                      <div className="nimble-cost-k">run</div>
+                      <div className="nimble-cost-row">
+                        <span>tokens</span>
+                        <span>{runMeter.tokens.toLocaleString()}</span>
+                      </div>
+                      <div className="nimble-cost-row">
+                        <span>cost</span>
+                        <span>${runMeter.cost.toFixed(4)}</span>
+                      </div>
+                      <div className="nimble-cost-row">
+                        <span>calls</span>
+                        <span>{runMeter.calls}</span>
+                      </div>
+                      {runMeter.steps.length > 0 && (
+                        <ul className="nimble-cost-steps">
+                          {runMeter.steps.map((s, i) => (
+                            <li key={`${s.phase}-${i}`}>
+                              {s.phase}
+                              {s.tokens ? ` · ${s.tokens.toLocaleString()} tok` : ""}
+                              {s.cost ? ` · $${s.cost.toFixed(4)}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+            )}
           </aside>
         )}
 
@@ -813,64 +1450,297 @@ export function NimbleView() {
                 <div
                   className="nimble-figures"
                   key={`fig-${design?.run_id ?? 0}`}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  {figures.map((f, i) => (
-                    <div
-                      key={`${f.label}-${f.value}-${i}`}
-                      className={`nimble-figure ${f.role === "primary" ? "is-primary" : "is-sat"}`}
-                      {...soft(
-                        `fig-${f.label}-${f.value}-${i}`,
-                        f.tip || `${f.value} · ${f.label}`,
-                        12,
-                      )}
-                    >
-                      <div className="nimble-figure-value">{f.value}</div>
-                      <div className="nimble-figure-label">{f.label}</div>
-                    </div>
-                  ))}
+                  {figures.map((f, i) => {
+                    const id = `figure:${i}`;
+                    return (
+                      <div
+                        key={`${f.label}-${f.value}-${i}`}
+                        role="button"
+                        tabIndex={0}
+                        className={atomClass(
+                          "nimble-figure",
+                          "nimble-atom",
+                          f.role === "primary" ? "is-primary" : "is-sat",
+                          atomLit(id) && "is-atom-focus",
+                          atomFlashed(id) && "is-patched",
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          enterAtomFocus({
+                            kind: "figure",
+                            id,
+                            text: `${f.value} ${f.label}`,
+                            label: "figure",
+                          });
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            enterAtomFocus({
+                              kind: "figure",
+                              id,
+                              text: `${f.value} ${f.label}`,
+                              label: "figure",
+                            });
+                          }
+                        }}
+                        {...soft(
+                          `fig-${f.label}-${f.value}-${i}`,
+                          f.tip || `${f.value} · ${f.label}`,
+                          8,
+                        )}
+                      >
+                        <div className="nimble-figure-value">{f.value}</div>
+                        <div
+                          className={`nimble-figure-label${f.label.length > 18 ? " is-long" : ""}`}
+                          title={f.tip}
+                        >
+                          {f.label}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
               {verdictFull && (
-                <p className="nimble-verdict">{verdictFull}</p>
+                <p
+                  className={atomClass(
+                    "nimble-verdict",
+                    "nimble-atom",
+                    atomLit("verdict") && "is-atom-focus",
+                    atomFlashed("verdict") && "is-patched",
+                  )}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    enterAtomFocus({
+                      kind: "verdict",
+                      id: "verdict",
+                      text: verdictFull,
+                      label: "verdict",
+                    });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      enterAtomFocus({
+                        kind: "verdict",
+                        id: "verdict",
+                        text: verdictFull,
+                        label: "verdict",
+                      });
+                    }
+                  }}
+                >
+                  {verdictFull}
+                </p>
               )}
 
               {summaryText && summaryText !== verdictFull.trim() && (
-                <>
-                  <p className="nimble-summary nimble-italic">
-                    {summaryHot.length === 0
-                      ? summaryText
-                      : renderHotSummary(summaryText, summaryHot, {
-                          activeId: lens?.spanId ?? null,
-                          onEnter: (spanId, target) => showLens(spanId, target),
-                          onLeave: (spanId) => hideLens(spanId),
-                        })}
-                  </p>
-                  {lens && (
-                    <div
-                      className="nimble-lens"
-                      onMouseEnter={() => {
-                        if (lensTimer.current) {
-                          window.clearTimeout(lensTimer.current);
-                        }
-                      }}
-                      onMouseLeave={() => hideLens()}
-                    >
-                      <div className="nimble-lens-k">{lens.target.label}</div>
-                      <div className="nimble-lens-body">{lens.target.body}</div>
-                      {lens.target.url && (
-                        <a
-                          className="nimble-lens-link"
-                          href={lens.target.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {lens.target.url}
-                        </a>
-                      )}
-                    </div>
+                <p
+                  className={atomClass(
+                    "nimble-summary",
+                    "nimble-italic",
+                    "nimble-atom",
+                    atomLit("summary") && "is-atom-focus",
+                    atomFlashed("summary") && "is-patched",
                   )}
-                </>
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    enterAtomFocus({
+                      kind: "summary",
+                      id: "summary",
+                      text: summaryText,
+                      label: "summary",
+                    });
+                  }}
+                >
+                  {summaryHot.length === 0
+                    ? summaryText
+                    : renderHotSummary(summaryText, summaryHot, {
+                        activeId: lens?.spanId ?? null,
+                        onEnter: (spanId, target, index) =>
+                          showLens(spanId, target, index),
+                        onLeave: (spanId) => hideLens(spanId),
+                        onClick: (spanId, target, index) => {
+                          pinLens(spanId, target, index);
+                          const kind = target.kind as PatchFocusKind | "section";
+                          if (kind === "section") return;
+                          enterAtomFocus({
+                            kind,
+                            id: target.id,
+                            text: target.body,
+                            label: target.label || kind,
+                          });
+                        },
+                      })}
+                </p>
+              )}
+
+              {schemaTokens.length > 0 && (
+                <div
+                  className="nimble-schema-stamp"
+                  aria-label="schema"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {schemaTokens.map((tok) => {
+                    const id = `schema:${tok.toLowerCase()}`;
+                    return (
+                      <button
+                        key={tok}
+                        type="button"
+                        className={atomClass(
+                          "nimble-schema-tok",
+                          "nimble-atom",
+                          (lens?.spanId === `tok-${tok.toLowerCase()}` ||
+                            atomLit(id)) &&
+                            "is-active",
+                          atomLit(id) && "is-atom-focus",
+                          atomFlashed(id) && "is-patched",
+                        )}
+                        onMouseEnter={() => activateToken(tok)}
+                        onMouseLeave={() =>
+                          hideLens(`tok-${tok.toLowerCase()}`)
+                        }
+                        onClick={() => {
+                          activateToken(tok, true);
+                          enterAtomFocus({
+                            kind: "schema",
+                            id,
+                            text: tok,
+                            label: "schema",
+                          });
+                        }}
+                      >
+                        {tok}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {patchRibbon && (
+                <div
+                  className={`nimble-patch-ribbon${patchRibbon.stub ? " is-stub" : ""}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span>
+                    {patchRibbon.action}: {patchRibbon.line}
+                    {patchRibbon.stub ? " · stub" : ""}
+                  </span>
+                  <button
+                    type="button"
+                    className="nimble-lens-clear"
+                    onClick={() => setPatchRibbon(null)}
+                    title="Dismiss"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              {atomFocus && answer && (
+                <div
+                  className="nimble-focus-dock"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="nimble-focus-dock-top">
+                    <span className="nimble-focus-dock-k">{atomFocus.label}</span>
+                    <button
+                      type="button"
+                      className="nimble-lens-clear"
+                      onClick={clearAtomFocus}
+                      title="Clear focus (Esc)"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <p className="nimble-focus-dock-snip">
+                    {atomFocus.text.slice(0, 160)}
+                    {atomFocus.text.length > 160 ? "…" : ""}
+                  </p>
+                  <input
+                    ref={focusNoteRef}
+                    className="nimble-focus-note"
+                    value={focusNote}
+                    disabled={patching}
+                    placeholder={focusPlaceholder}
+                    onChange={(e) => setFocusNote(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void applyAtomPatch("critique");
+                      }
+                    }}
+                  />
+                  <div className="nimble-focus-chips">
+                    <button
+                      type="button"
+                      className="nimble-focus-chip"
+                      disabled={patching}
+                      onClick={() => void applyAtomPatch("critique")}
+                    >
+                      Critique
+                    </button>
+                    <button
+                      type="button"
+                      className="nimble-focus-chip"
+                      disabled={patching}
+                      onClick={() => void applyAtomPatch("probe")}
+                    >
+                      Probe
+                    </button>
+                    {patching && (
+                      <span className="nimble-italic nimble-focus-wait">
+                        patching…
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {lens && (
+                <div
+                  className={`nimble-lens${lens.pinned ? " is-pinned" : ""}`}
+                  onMouseEnter={() => {
+                    if (lensTimer.current) {
+                      window.clearTimeout(lensTimer.current);
+                    }
+                  }}
+                  onMouseLeave={() => hideLens()}
+                >
+                  <div className="nimble-lens-top">
+                    <span className="nimble-lens-k">
+                      {lens.target.label}
+                      {lens.pinned ? " · pinned" : ""}
+                    </span>
+                    {lens.pinned && (
+                      <button
+                        type="button"
+                        className="nimble-lens-clear"
+                        onClick={clearFocus}
+                        title="Unpin (Esc)"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  <div className="nimble-lens-body">{lens.target.body}</div>
+                  {lens.target.url && (
+                    <a
+                      className="nimble-lens-link"
+                      href={lens.target.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {lens.target.url}
+                    </a>
+                  )}
+                </div>
               )}
 
               {!verdictFull &&
@@ -881,40 +1751,68 @@ export function NimbleView() {
                   </p>
                 )}
 
-              {(answer?.answer?.working_query_schema?.trim() ||
-                (answer?.answer?.assertions?.length ?? 0) > 0 ||
+              {((answer?.answer?.assertions?.length ?? 0) > 0 ||
                 sections.length > 0) && (
-                <details className="nimble-fold nimble-fold-center">
+                <details
+                  className="nimble-fold nimble-fold-center"
+                  key={`detail-${focusKind === "assertion" || focusKind === "section" || atomFocus?.kind === "assertion" ? "fill" : "side"}`}
+                  {...(focusKind === "assertion" ||
+                  focusKind === "section" ||
+                  atomFocus?.kind === "assertion"
+                    ? { open: true }
+                    : {})}
+                >
                   <summary className="nimble-fold-sum">
                     <span className="nimble-fold-k">detail</span>
                     <span className="nimble-fold-n">
                       {(answer?.answer?.assertions?.length ?? 0) +
-                        sections.length +
-                        (answer?.answer?.working_query_schema?.trim() ? 1 : 0)}
+                        sections.length}
                     </span>
                   </summary>
                   <div className="nimble-fold-body">
-                    {answer?.answer?.working_query_schema?.trim() && (
-                      <p
-                        className="nimble-schema"
-                        {...soft(
-                          "schema",
-                          answer.answer.working_query_schema.trim(),
-                          120,
-                        )}
-                      >
-                        {answer.answer.working_query_schema.trim()}
-                      </p>
-                    )}
                     {(answer?.answer?.assertions?.length ?? 0) > 0 && (
                       <ul className="nimble-fold-list">
                         {answer!.answer.assertions.map((a, i) => {
                           const key = `assert-${i}`;
+                          const id = `assertion:${i}`;
                           const full = a.basis
                             ? `${a.statement} — ${a.basis}`
                             : a.statement;
+                          const active =
+                            lens?.target.id === id || atomLit(id);
                           return (
-                            <li key={key} {...soft(key, full, 160)}>
+                            <li
+                              key={key}
+                              className={atomClass(
+                                "nimble-atom",
+                                active && "is-focused",
+                                atomLit(id) && "is-atom-focus",
+                                atomFlashed(id) && "is-patched",
+                              )}
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                enterAtomFocus({
+                                  kind: "assertion",
+                                  id,
+                                  text: a.statement,
+                                  label: "assertion",
+                                });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  enterAtomFocus({
+                                    kind: "assertion",
+                                    id,
+                                    text: a.statement,
+                                    label: "assertion",
+                                  });
+                                }
+                              }}
+                              {...soft(key, full, 160)}
+                            >
                               {a.statement}
                               {a.basis && (
                                 <div className="nimble-italic nimble-assert-basis">
@@ -931,10 +1829,11 @@ export function NimbleView() {
                       const full = [s.title || s.port, s.body, ...(s.items ?? [])]
                         .filter(Boolean)
                         .join(" · ");
+                      const active = lens?.target.id === `section:${i}`;
                       return (
                         <div
                           key={key}
-                          className="nimble-section-block"
+                          className={`nimble-section-block${active ? " is-focused" : ""}`}
                           {...soft(key, full, 200)}
                         >
                           <div className="nimble-section-title">
@@ -972,10 +1871,48 @@ export function NimbleView() {
           <aside
             className={`nimble-rail nimble-rail-right${
               gather || running ? " in" : ""
-            }`}
+            }${rightCompact ? " is-compact" : ""}${rightOpen && railsCompact ? " is-expanded" : ""}${focusKind === "claim" || atomFocus?.kind === "claim" ? " has-focus" : ""}`}
+            onMouseEnter={() => {
+              if (railsCompact) openRightRail();
+            }}
+            onMouseLeave={() => {
+              if (railsCompact) scheduleCloseRightRail();
+            }}
           >
+            {rightCompact ? (
+              <div className="nimble-rail-glyphs" role="toolbar" aria-label="Claims">
+                <button
+                  type="button"
+                  className={`nimble-glyph-btn${focusKind === "claim" ? " is-focus" : ""}`}
+                  title={`claims · ${allFinds.length || 0}`}
+                  onMouseEnter={openRightRail}
+                  onClick={() => setRightExpanded((v) => !v)}
+                >
+                  <span aria-hidden>«</span>
+                  <span className="nimble-glyph-n">{allFinds.length || "·"}</span>
+                </button>
+              </div>
+            ) : (
             <div className="nimble-rail-scroll">
-              <details className="nimble-fold">
+              {railsCompact && (
+                <button
+                  type="button"
+                  className="nimble-rail-collapse"
+                  onClick={() => {
+                    setRightExpanded(false);
+                    setRightHover(false);
+                    setRightSession((s) => s + 1);
+                  }}
+                  title="Collapse"
+                >
+                  »
+                </button>
+              )}
+              <details
+                className="nimble-fold"
+                key={`claims-${rightSession}`}
+                open
+              >
                 <summary className="nimble-fold-sum">
                   <span className="nimble-fold-glyph" aria-hidden>
                     «
@@ -986,6 +1923,7 @@ export function NimbleView() {
                 <div className="nimble-claim-list">
                   {allFinds.map((f) => {
                     const key = `find-${f.id}`;
+                    const id = `claim:${f.id}`;
                     const tipBody = [
                       f.claim,
                       f.source_title ? `Source: ${f.source_title}` : "",
@@ -994,17 +1932,27 @@ export function NimbleView() {
                     ]
                       .filter(Boolean)
                       .join("\n");
+                    const focused =
+                      focusedClaimId === f.id || atomLit(id);
                     return (
                       <button
                         key={f.id}
                         type="button"
-                        className="nimble-claim-row"
-                        onClick={() => {
-                          if (f.source_url) {
-                            window.open(f.source_url, "_blank", "noreferrer");
-                          } else {
-                            setDrilledFind(f);
-                          }
+                        className={atomClass(
+                          "nimble-claim-row",
+                          "nimble-atom",
+                          focused && "is-focused",
+                          atomLit(id) && "is-atom-focus",
+                          atomFlashed(id) && "is-patched",
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          enterAtomFocus({
+                            kind: "claim",
+                            id,
+                            text: f.claim || f.source_title || f.id,
+                            label: "claim",
+                          });
                         }}
                         onMouseEnter={(e) =>
                           showTip(key, tipBody, e.currentTarget, 64, f.source_url)
@@ -1028,14 +1976,19 @@ export function NimbleView() {
                 </div>
               </details>
             </div>
+            )}
           </aside>
         )}
       </div>
 
       {tip && (
         <div
-          className="nimble-tip"
-          style={{ left: tip.x, top: tip.y }}
+          className={`nimble-tip${tip.placeAbove ? " is-above" : ""}`}
+          style={{
+            left: tip.x,
+            top: tip.y,
+            maxHeight: tip.maxH ?? 280,
+          }}
           onMouseEnter={() => {
             if (tipTimer.current) window.clearTimeout(tipTimer.current);
           }}
@@ -1127,7 +2080,7 @@ export function NimbleView() {
 }
 
 function trimLabel(s: string, n: number): string {
-  return clipText(s, n, false);
+  return clipWords(s, n);
 }
 
 type Figure = {
@@ -1158,12 +2111,23 @@ function labelScore(label: string): number {
   if (/^(chance|range|percent|record|wins|place|division|alt\b)/i.test(t)) {
     return 1;
   }
+  if (isWeakFigureLabel(t)) return 0;
   let score = Math.min(t.length, 36);
   if (/\b(20\d{2})\b/.test(t)) score += 4;
-  if (/\b(vote|odds|share|poll|record|leader|chance|risk|ruin)\b/i.test(t)) {
-    score += 3;
+  if (
+    /\b(vote|odds|share|poll|record|leader|chance|risk|ruin|parity|capacity|compute|yield|production|stock)\b/i.test(
+      t,
+    )
+  ) {
+    score += 5;
   }
   return score;
+}
+
+function isWeakFigureLabel(label: string): boolean {
+  return /^(reached?|reaching|shows?|shown|unlikely|likely|remains?|leaving|versus|with|from|into|under|given|about|that|this|have|has|had|been|were|was|are|is|to|of|in|on|at|by|for|as|and|or|the|a|an)$/i.test(
+    label.trim(),
+  );
 }
 
 /** Pull a short distinctive label from text around a numeric match. */
@@ -1174,16 +2138,37 @@ function labelNear(
 ): string {
   const b = before.replace(/\s+/g, " ").trim();
   const a = after.replace(/\s+/g, " ").trim();
+
+  // "41% of global AI chip deployment" / "41 percent share of …"
+  const ofAfter = a.match(
+    /^\s*(?:percent\s+)?(?:share\s+)?(?:of|in)\s+(.{3,42})/i,
+  );
+  if (ofAfter?.[1]) {
+    const cand = trimLabel(ofAfter[1].replace(/[,.;:].*$/, "").trim(), 48);
+    if (cand && !isWeakFigureLabel(cand)) return cand;
+  }
+
+  // "share of X … at 41%" / "parity by 2030 at 41%"
+  const shareBefore = b.match(
+    /((?:share|portion|odds|chance|probability|capacity|parity|stock|yield|production)(?:\s+(?:of|in|for)\s+[^,.;:]{2,36})?)\s*(?:at|to|near|around|≈|~)?\s*$/i,
+  );
+  if (shareBefore?.[1]) {
+    const cand = trimLabel(shareBefore[1].trim(), 48);
+    if (cand && !isWeakFigureLabel(cand)) return cand;
+  }
+
   const ofThat =
     b.match(
-      /(?:chance|probability|odds|likelihood|rate|share|margin|vote)\s+(?:of|that|for|as)?\s*(.{3,42})$/i,
+      /(?:chance|probability|odds|likelihood|rate|share|margin|vote|capacity|parity)\s+(?:of|that|for|as)?\s*(.{3,42})$/i,
     ) ||
     a.match(
-      /^(?:chance|probability|odds|likelihood)\s+(?:of|that|for)\s+(.{3,42})/i,
+      /^(?:chance|probability|odds|likelihood|share)\s+(?:of|that|for)\s+(.{3,42})/i,
     );
   if (ofThat?.[1]) {
-    return trimLabel(ofThat[1].replace(/[,.;:].*$/, "").trim(), 28);
+    const cand = trimLabel(ofThat[1].replace(/[,.;:].*$/, "").trim(), 44);
+    if (cand && !isWeakFigureLabel(cand)) return cand;
   }
+
   const byYear = `${b} ${a}`.match(
     /\bby\s+(20\d{2})\b|\b(20\d{2})\s*[-–]\s*(20\d{2})\b/i,
   );
@@ -1194,19 +2179,19 @@ function labelNear(
     .split(/\s+/)
     .filter(
       (w) =>
-        !/^(a|an|the|of|to|in|on|at|vs|is|are|and|or|with|under|about|was|were|has|had|been)$/i.test(
+        !/^(a|an|the|of|to|in|on|at|vs|is|are|and|or|with|under|about|was|were|has|had|been|reach|reached|reaching|unlikely|likely)$/i.test(
           w,
         ),
     )
-    .slice(-3)
+    .slice(-4)
     .join(" ");
-  if (topic && topic.length >= 3) {
+  if (topic && topic.length >= 3 && !isWeakFigureLabel(topic)) {
     const yearBit = byYear
       ? byYear[1] || `${byYear[2]}–${byYear[3]}`
       : "";
     return trimLabel(
       yearBit && !topic.includes(yearBit) ? `${topic} ${yearBit}` : topic,
-      28,
+      48,
     );
   }
   if (byYear) return byYear[1] || `${byYear[2]}–${byYear[3]}`;
@@ -1345,9 +2330,16 @@ function extractFigures(parts: {
     const alts = labels
       .filter((l) => l.toLowerCase() !== fig.label.toLowerCase())
       .filter((l) => labelScore(l) > 1);
-    const tipParts = [`${fig.value} · ${fig.label}`, ...alts.slice(0, 3)];
+    const bestLabel = isWeakFigureLabel(fig.label)
+      ? alts[0] || fig.label
+      : fig.label;
+    const tipParts = [
+      `${fig.value} — ${bestLabel}`,
+      ...alts.filter((l) => l.toLowerCase() !== bestLabel.toLowerCase()).slice(0, 3),
+    ];
     return {
       ...fig,
+      label: bestLabel,
       tip: tipParts.join("\n"),
       weight: fig.weight + Math.min(alts.length, 2),
     };
