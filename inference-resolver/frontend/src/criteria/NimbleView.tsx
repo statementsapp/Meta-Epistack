@@ -16,6 +16,7 @@ import {
   type GatherPacket,
   type PatchFocus,
   type PatchFocusKind,
+  type PatchOp,
   type Presupposition,
 } from "./types";
 import { questionToHeading } from "./questionToHeading";
@@ -31,6 +32,48 @@ import {
 type FlowPhase = "idle" | "design" | "audit" | "needs" | "gather" | "answer";
 
 type AtomFocus = PatchFocus & { label: string };
+
+function focusActionChips(
+  kind: PatchFocusKind | "selection",
+): { action: "critique" | "probe"; label: string }[] {
+  switch (kind) {
+    case "claim":
+      return [
+        { action: "critique", label: "Distrust source" },
+        { action: "probe", label: "Corroborate" },
+      ];
+    case "figure":
+      return [
+        { action: "critique", label: "Misread" },
+        { action: "probe", label: "As-of / denom" },
+      ];
+    case "check":
+      return [
+        { action: "critique", label: "Too weak" },
+        { action: "probe", label: "Fetch now" },
+      ];
+    case "defeater":
+      return [
+        { action: "critique", label: "Dismiss" },
+        { action: "probe", label: "Hunt now" },
+      ];
+    case "schema":
+      return [
+        { action: "critique", label: "Wrong frame" },
+        { action: "probe", label: "Missing class" },
+      ];
+    case "risk":
+      return [
+        { action: "critique", label: "Challenge" },
+        { action: "probe", label: "Settle" },
+      ];
+    default:
+      return [
+        { action: "critique", label: "Critique" },
+        { action: "probe", label: "Probe" },
+      ];
+  }
+}
 
 /** First sentence/question only — Nimble takes input one unit at a time. */
 function firstUnit(raw: string): string {
@@ -261,7 +304,18 @@ export function NimbleView() {
     line: string;
     stub: boolean;
     action: "critique" | "probe";
+    ops: PatchOp[];
+    revision: number;
   } | null>(null);
+  const [revisionLog, setRevisionLog] = useState<
+    {
+      revision: number;
+      action: "critique" | "probe";
+      line: string;
+      ops: PatchOp[];
+      stub: boolean;
+    }[]
+  >([]);
   const tipTimer = useRef<number | null>(null);
   const lensTimer = useRef<number | null>(null);
   const leftRailTimer = useRef<number | null>(null);
@@ -386,8 +440,33 @@ export function NimbleView() {
       risks: answer?.answer?.residual_uncertainty ?? [],
     });
     if (!targets.length) return { hot: [], targets: [] };
+    const modelSpans = (answer?.answer?.summary_spans ?? [])
+      .map((s) => {
+        const start = Number(s.start);
+        const end = Number(s.end);
+        if (
+          !Number.isFinite(start) ||
+          !Number.isFinite(end) ||
+          start < 0 ||
+          end > summaryText.length ||
+          start >= end
+        ) {
+          return null;
+        }
+        return {
+          id: s.id || `span-${start}-${end}`,
+          start,
+          end,
+          text: s.text || summaryText.slice(start, end),
+          targetIds: s.target_ids ?? [],
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => !!s);
     const lexicon = buildLexicon(targets);
-    const spans = annotateSummary(summaryText, lexicon, 10);
+    const spans =
+      modelSpans.length > 0
+        ? modelSpans
+        : annotateSummary(summaryText, lexicon, 10);
     return {
       hot: resolveSpans(spans, targets, assertions),
       targets,
@@ -400,6 +479,7 @@ export function NimbleView() {
     settlementNeeds,
     defeaterNeeds,
     answer?.answer?.residual_uncertainty,
+    answer?.answer?.summary_spans,
   ]);
   const summaryHot = summaryHotBundle.hot;
   const lensTargets = summaryHotBundle.targets;
@@ -487,6 +567,7 @@ export function NimbleView() {
         answer: answer.answer,
         gather: gather ?? undefined,
         evidence_needs: needsPlan ?? undefined,
+        criteria: criteria ?? undefined,
       });
       setAnswer((prev) =>
         prev
@@ -505,11 +586,24 @@ export function NimbleView() {
       if (patchFlashTimer.current) window.clearTimeout(patchFlashTimer.current);
       setPatchFlash([...flash]);
       patchFlashTimer.current = window.setTimeout(() => setPatchFlash([]), 2200);
-      setPatchRibbon({
+      const ribbon = {
         line: result.summary_line || `${action} applied`,
         stub: result.stub,
         action: result.action,
-      });
+        ops: result.ops.filter((o) => o.op !== "annotate"),
+        revision: result.revision_index || revisionLog.length + 1,
+      };
+      setPatchRibbon(ribbon);
+      setRevisionLog((prev) => [
+        ...prev,
+        {
+          revision: ribbon.revision,
+          action: ribbon.action,
+          line: ribbon.line,
+          ops: ribbon.ops,
+          stub: ribbon.stub,
+        },
+      ]);
       setFocusNote("");
       if (action === "probe") setRightExpanded(true);
       if (action === "critique") setLeftExpanded(true);
@@ -645,6 +739,7 @@ export function NimbleView() {
     clearAtomFocus();
     setPatchFlash([]);
     setPatchRibbon(null);
+    setRevisionLog([]);
     setLeftExpanded(false);
     setRightExpanded(false);
     setLeftHover(false);
@@ -677,6 +772,7 @@ export function NimbleView() {
     clearAtomFocus();
     setPatchFlash([]);
     setPatchRibbon(null);
+    setRevisionLog([]);
     setRunMeter({ tokens: 0, cost: 0, calls: 0, steps: [] });
 
     try {
@@ -1386,7 +1482,23 @@ export function NimbleView() {
           </aside>
         )}
 
-        <div className={`nimble-prompt-block${committed == null ? " is-editing" : ""}`}>
+        <div
+          className={`nimble-prompt-block${committed == null ? " is-editing" : ""}`}
+          onMouseUp={() => {
+            if (!answer || committed == null) return;
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed) return;
+            const text = sel.toString().replace(/\s+/g, " ").trim();
+            if (text.length < 6 || text.length > 280) return;
+            enterAtomFocus({
+              kind: "summary",
+              id: "selection",
+              text,
+              label: "selection",
+            });
+            setFocusNote(text.slice(0, 160));
+          }}
+        >
           {committed == null ? (
             <>
               <textarea
@@ -1628,10 +1740,51 @@ export function NimbleView() {
                   className={`nimble-patch-ribbon${patchRibbon.stub ? " is-stub" : ""}`}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <span>
-                    {patchRibbon.action}: {patchRibbon.line}
-                    {patchRibbon.stub ? " · stub" : ""}
-                  </span>
+                  <div className="nimble-patch-ribbon-main">
+                    <div className="nimble-patch-ribbon-line">
+                      <span className="nimble-patch-rev">
+                        r{patchRibbon.revision}
+                      </span>
+                      {patchRibbon.action}: {patchRibbon.line}
+                      {patchRibbon.stub ? " · stub" : ""}
+                    </div>
+                    {patchRibbon.ops.length > 0 && (
+                      <ul className="nimble-patch-ops">
+                        {patchRibbon.ops.slice(0, 6).map((op, i) => (
+                          <li key={`${op.op}-${op.target_id}-${i}`}>
+                            <span className="nimble-patch-op-k">{op.op}</span>
+                            {op.before ? (
+                              <span className="nimble-patch-before">
+                                {op.before.slice(0, 72)}
+                                {op.before.length > 72 ? "…" : ""}
+                              </span>
+                            ) : null}
+                            {op.before && op.after ? (
+                              <span className="nimble-patch-arrow">→</span>
+                            ) : null}
+                            {op.after ? (
+                              <span className="nimble-patch-after">
+                                {op.after.slice(0, 72)}
+                                {op.after.length > 72 ? "…" : ""}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {revisionLog.length > 1 && (
+                      <div className="nimble-patch-history">
+                        {revisionLog
+                          .slice(-4)
+                          .map((r) => (
+                            <span key={r.revision} title={r.line}>
+                              r{r.revision}
+                              {r.stub ? "*" : ""}
+                            </span>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="nimble-lens-clear"
@@ -1663,6 +1816,27 @@ export function NimbleView() {
                     {atomFocus.text.slice(0, 160)}
                     {atomFocus.text.length > 160 ? "…" : ""}
                   </p>
+                  {atomFocus.kind === "claim" &&
+                    (() => {
+                      const fid = atomFocus.id.replace(/^claim:/, "");
+                      const find =
+                        gather?.finds.find((f) => f.id === fid) ?? null;
+                      if (!find?.source_url && !find?.source_title) return null;
+                      return find.source_url ? (
+                        <a
+                          className="nimble-focus-source"
+                          href={find.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {find.source_title || find.source_url}
+                        </a>
+                      ) : (
+                        <div className="nimble-focus-source is-plain">
+                          {find.source_title}
+                        </div>
+                      );
+                    })()}
                   <input
                     ref={focusNoteRef}
                     className="nimble-focus-note"
@@ -1678,22 +1852,21 @@ export function NimbleView() {
                     }}
                   />
                   <div className="nimble-focus-chips">
-                    <button
-                      type="button"
-                      className="nimble-focus-chip"
-                      disabled={patching}
-                      onClick={() => void applyAtomPatch("critique")}
-                    >
-                      Critique
-                    </button>
-                    <button
-                      type="button"
-                      className="nimble-focus-chip"
-                      disabled={patching}
-                      onClick={() => void applyAtomPatch("probe")}
-                    >
-                      Probe
-                    </button>
+                    {focusActionChips(
+                      atomFocus.id === "selection"
+                        ? "selection"
+                        : atomFocus.kind,
+                    ).map((chip) => (
+                      <button
+                        key={chip.action}
+                        type="button"
+                        className="nimble-focus-chip"
+                        disabled={patching}
+                        onClick={() => void applyAtomPatch(chip.action)}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
                     {patching && (
                       <span className="nimble-italic nimble-focus-wait">
                         patching…

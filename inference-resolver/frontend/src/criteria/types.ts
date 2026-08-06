@@ -245,6 +245,16 @@ export interface CriteriaAnswer {
   assertions: AnswerAssertion[];
   residual_uncertainty: string[];
   working_query_schema?: string;
+  /** Model-emitted hotmarks; optional — UI falls back to lexicon matching. */
+  summary_spans?: AnswerSummarySpan[];
+}
+
+export interface AnswerSummarySpan {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  target_ids: string[];
 }
 
 export interface AnswerResult {
@@ -371,6 +381,7 @@ export interface CriteriaPatchResult {
   gather?: GatherPacket | null;
   ops: PatchOp[];
   summary_line: string;
+  revision_index: number;
   calls: CallSummary[];
   total_tokens: number;
   total_cost_usd: number;

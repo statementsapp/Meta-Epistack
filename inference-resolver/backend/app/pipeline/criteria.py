@@ -11,7 +11,7 @@ import json
 from datetime import date, datetime, timezone
 from typing import Any
 
-from ..llm import LLMError, client, parse_json_loose
+from ..llm import LLMError, MissingKeyError, client, parse_json_loose
 from ..models import (
     AnswerAssertion,
     AnswerDefeater,
@@ -33,6 +33,7 @@ from ..models import (
     GatherResult,
     PatchOp,
     Presupposition,
+    SummarySpanMark,
     SurfaceFeatures,
 )
 from .. import criteria_log, db
@@ -1749,12 +1750,28 @@ Return ONE JSON object only:
       ]
     }
   ],
-  "residual_uncertainty": ["what remains open"]
+  "residual_uncertainty": ["what remains open"],
+  "summary_spans": [
+    {
+      "id": "s1",
+      "start": 0,
+      "end": 12,
+      "text": "exact substring of summary",
+      "target_ids": ["claim:f1", "assertion:0"]
+    }
+  ]
 }
 
 Include exactly one section per required port, in the same order as
 required_ports. Include at least one substantive assertion that answers the
 prompt when the inquiry warrants it.
+
+For summary_spans: mark 3-8 key phrases in summary that point at claims
+(claim:<id>), assertions (assertion:<i>), checks (check:<i>), defeaters
+(hunt:<i> or defeater:<i>), or risks (risk:<i>). start/end are 0-based UTF-16
+code unit offsets into summary; text must equal summary[start:end]. Prefer
+salient numbers, named actors, and contested predicates. Omit spans rather
+than invent targets.
 """
 
 
@@ -1908,6 +1925,8 @@ def _normalize_answer(
         else []
     )
 
+    spans = _normalize_summary_spans(data.get("summary_spans"), summary)
+
     return (
         CriteriaAnswer(
             headline=headline,
@@ -1916,9 +1935,64 @@ def _normalize_answer(
             assertions=assertions,
             residual_uncertainty=residual,
             working_query_schema=working,
+            summary_spans=spans,
         ),
         warnings,
     )
+
+
+def _normalize_summary_spans(raw: Any, summary: str) -> list[SummarySpanMark]:
+    if not summary or not isinstance(raw, list):
+        return []
+    out: list[SummarySpanMark] = []
+    seen_set: set[tuple[int, int]] = set()
+    for i, item in enumerate(raw[:12]):
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        try:
+            start = int(item.get("start"))
+            end = int(item.get("end"))
+        except (TypeError, ValueError):
+            start, end = -1, -1
+        if not (0 <= start < end <= len(summary)):
+            if text and text in summary:
+                start = summary.index(text)
+                end = start + len(text)
+            else:
+                continue
+        slice_text = summary[start:end]
+        if text and slice_text != text:
+            # Prefer exact text match when offsets drifted.
+            if text in summary:
+                start = summary.index(text)
+                end = start + len(text)
+                slice_text = text
+            else:
+                text = slice_text
+        else:
+            text = slice_text
+        key = (start, end)
+        if key in seen_set:
+            continue
+        seen_set.add(key)
+        tids_raw = item.get("target_ids")
+        tids = (
+            [str(x).strip() for x in tids_raw if str(x).strip()]
+            if isinstance(tids_raw, list)
+            else []
+        )
+        sid = str(item.get("id") or f"s{i + 1}").strip() or f"s{i + 1}"
+        out.append(
+            SummarySpanMark(
+                id=sid,
+                start=start,
+                end=end,
+                text=text,
+                target_ids=tids[:6],
+            )
+        )
+    return out
 
 
 async def answer_to_criteria(
@@ -1987,11 +2061,7 @@ async def answer_to_criteria(
 
 
 def stub_patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
-    """Deterministic focus-mode patch — no LLM. Returns answer + ops for the UI flash.
-
-    Real retrieval/critique LLM wiring comes later; this lets Focus Mode exercise
-    the dim → feedback → patch → flash loop end-to-end.
-    """
+    """Deterministic focus-mode fallback when live critique/probe cannot run."""
     answer = req.answer.model_copy(deep=True)
     gather = req.gather.model_copy(deep=True) if req.gather is not None else None
     ops: list[PatchOp] = []
@@ -2016,7 +2086,11 @@ def stub_patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
             ]
             softened = before
             if not softened.lower().startswith("provisionally,"):
-                softened = f"Provisionally, {before[0].lower()}{before[1:]}" if before else before
+                softened = (
+                    f"Provisionally, {before[0].lower()}{before[1:]}"
+                    if before
+                    else before
+                )
             target.statement = softened
             ops.append(
                 PatchOp(
@@ -2037,8 +2111,23 @@ def stub_patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
                         reason="critique softened assertion pending review",
                     )
                 )
+            if req.focus.kind == "summary" and answer.summary:
+                before_s = answer.summary
+                if "provisionally" not in before_s.lower():
+                    answer.summary = f"Provisionally: {before_s}"
+                    ops.append(
+                        PatchOp(
+                            op="revise_summary",
+                            target_id="summary",
+                            before=before_s,
+                            after=answer.summary,
+                            reason="critique softened summary",
+                        )
+                    )
         else:
-            answer.residual_uncertainty = list(answer.residual_uncertainty) + [challenge]
+            answer.residual_uncertainty = list(answer.residual_uncertainty) + [
+                challenge
+            ]
             ops.append(
                 PatchOp(
                     op="add_residual",
@@ -2063,7 +2152,6 @@ def stub_patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
             )
         summary_line = "Critique applied · defeater noted · stance softened"
     else:
-        # probe
         probe_line = note or f"Probe opened on: {focus_short}"
         answer.residual_uncertainty = list(answer.residual_uncertainty) + [
             f"OPEN probe: {probe_line}"
@@ -2086,13 +2174,9 @@ def stub_patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
                 reason="probe queued as residual uncertainty",
             )
         )
-
-        # Stub claim so the claims rail can flash a new receipt.
         if gather is not None:
             new_id = f"stub-probe-{len(gather.finds) + 1}"
-            claim_text = (
-                f"[stub probe] Need evidence regarding: {probe_line}"
-            )
+            claim_text = f"[stub probe] Need evidence regarding: {probe_line}"
             gather.finds = list(gather.finds) + [
                 GatheredFind(
                     id=new_id,
@@ -2104,7 +2188,7 @@ def stub_patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
                     source_publisher="stub",
                     quoted_or_paraphrase="",
                     published_at="",
-                    confidence_note="stub — replace with live gather",
+                    confidence_note="stub — live retrieval unavailable",
                     salience="medium",
                 )
             ]
@@ -2140,5 +2224,508 @@ def stub_patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
         gather=gather,
         ops=ops,
         summary_line=summary_line,
-        warnings=["Patch stub — no LLM / no live retrieval yet."],
+        revision_index=0,
+        warnings=["Patch stub — deterministic fallback."],
     )
+
+
+_PATCH_CRITIQUE_SYSTEM = """You revise a focused atom of an investigation answer under critique.
+
+You receive the original prompt, the current answer, optional gather finds, and
+a focus atom the user challenged (plus optional note). Patch surgically: do not
+re-litigate every port. Keep investigation-support attitude (defeaters visible).
+
+RULES
+- Respect clock.today. Do not invent URLs or find_ids not in gather.
+- Prefer softens/qualifiers over total reversal unless the challenge is decisive.
+- Attach a high-salience defeater when challenging a verdict/assertion/summary.
+- If focus is summary, revise summary (and headline if needed).
+- If focus is claim, challenge reliance on that source; may add residual or defeater.
+- Do not use em dashes.
+- Return ops describing each material change for UI flash.
+
+Return ONE JSON object only:
+{
+  "summary_line": "short ribbon line",
+  "ops": [
+    {
+      "op": "revise_headline|revise_summary|revise_assertion|add_defeater|add_residual|mark_open|annotate",
+      "target_id": "verdict|summary|assertion:0|risk:new|...",
+      "before": "prior text or empty",
+      "after": "new text",
+      "reason": "why"
+    }
+  ],
+  "answer": {
+    "headline": "revised headline",
+    "summary": "revised summary",
+    "summary_spans": [
+      {"id": "s1", "start": 0, "end": 8, "text": "slice", "target_ids": ["assertion:0"]}
+    ],
+    "assertions": [
+      {
+        "statement": "...",
+        "basis": "...",
+        "find_ids": [],
+        "defeaters": [{"text": "...", "salience": "high|medium|low", "find_ids": []}]
+      }
+    ],
+    "residual_uncertainty": ["..."],
+    "working_query_schema": "keep or revise",
+    "sections": []
+  }
+}
+
+Omit sections to keep the prior sections unchanged. Always return full
+assertions/residual lists as you want them after the patch.
+"""
+
+
+def _parse_ops(raw: Any) -> list[PatchOp]:
+    if not isinstance(raw, list):
+        return []
+    allowed = {
+        "revise_headline",
+        "revise_summary",
+        "revise_assertion",
+        "add_defeater",
+        "add_residual",
+        "add_claim",
+        "mark_open",
+        "annotate",
+    }
+    out: list[PatchOp] = []
+    for item in raw[:24]:
+        if not isinstance(item, dict):
+            continue
+        op = str(item.get("op") or "").strip()
+        if op not in allowed:
+            continue
+        out.append(
+            PatchOp(
+                op=op,  # type: ignore[arg-type]
+                target_id=str(item.get("target_id") or "").strip(),
+                before=str(item.get("before") or ""),
+                after=str(item.get("after") or ""),
+                reason=str(item.get("reason") or "").strip(),
+            )
+        )
+    return out
+
+
+def _merge_patched_answer(
+    base: CriteriaAnswer,
+    raw_answer: Any,
+    *,
+    criteria: CriteriaObject | None,
+    gather: GatherPacket | None,
+) -> tuple[CriteriaAnswer, list[str]]:
+    warnings: list[str] = []
+    data = raw_answer if isinstance(raw_answer, dict) else {}
+    if not data:
+        return base.model_copy(deep=True), ["Critique returned no answer object."]
+
+    if criteria is not None:
+        merged, norm_w = _normalize_answer(data, criteria, gather)
+        warnings.extend(norm_w)
+        if not data.get("sections"):
+            merged.sections = list(base.sections)
+        if not str(data.get("working_query_schema") or "").strip():
+            merged.working_query_schema = base.working_query_schema
+        return merged, warnings
+
+    answer = base.model_copy(deep=True)
+    if str(data.get("headline") or "").strip():
+        answer.headline = str(data.get("headline")).strip()
+    if "summary" in data:
+        answer.summary = str(data.get("summary") or "").strip()
+    if isinstance(data.get("residual_uncertainty"), list):
+        answer.residual_uncertainty = [
+            str(x).strip() for x in data["residual_uncertainty"] if str(x).strip()
+        ]
+    if str(data.get("working_query_schema") or "").strip():
+        answer.working_query_schema = str(data.get("working_query_schema")).strip()
+    spans = _normalize_summary_spans(data.get("summary_spans"), answer.summary)
+    if spans:
+        answer.summary_spans = spans
+
+    allowed_finds = (
+        {f.id for f in gather.finds if f.id} if gather is not None else None
+    )
+    raw_assertions = data.get("assertions")
+    if isinstance(raw_assertions, list) and raw_assertions:
+        assertions: list[AnswerAssertion] = []
+        for item in raw_assertions:
+            if not isinstance(item, dict):
+                continue
+            statement = str(item.get("statement") or "").strip()
+            if not statement:
+                continue
+            defeaters: list[AnswerDefeater] = []
+            if isinstance(item.get("defeaters"), list):
+                for d in item["defeaters"]:
+                    normalized = _normalize_defeater(d, allowed_finds=allowed_finds)
+                    if normalized:
+                        defeaters.append(normalized)
+            assertions.append(
+                AnswerAssertion(
+                    statement=statement,
+                    basis=str(item.get("basis") or "").strip(),
+                    defeaters=defeaters,
+                    find_ids=_filter_find_ids(item.get("find_ids"), allowed_finds),
+                )
+            )
+        if assertions:
+            answer.assertions = assertions
+    return answer, warnings
+
+
+def _diff_ops(before: CriteriaAnswer, after: CriteriaAnswer) -> list[PatchOp]:
+    ops: list[PatchOp] = []
+    if before.headline != after.headline:
+        ops.append(
+            PatchOp(
+                op="revise_headline",
+                target_id="verdict",
+                before=before.headline,
+                after=after.headline,
+                reason="headline revised",
+            )
+        )
+    if before.summary != after.summary:
+        ops.append(
+            PatchOp(
+                op="revise_summary",
+                target_id="summary",
+                before=before.summary,
+                after=after.summary,
+                reason="summary revised",
+            )
+        )
+    for i, (ba, aa) in enumerate(zip(before.assertions, after.assertions)):
+        if ba.statement != aa.statement:
+            ops.append(
+                PatchOp(
+                    op="revise_assertion",
+                    target_id=f"assertion:{i}",
+                    before=ba.statement,
+                    after=aa.statement,
+                    reason="assertion revised",
+                )
+            )
+        before_defs = {d.text for d in ba.defeaters}
+        for d in aa.defeaters:
+            if d.text not in before_defs:
+                ops.append(
+                    PatchOp(
+                        op="add_defeater",
+                        target_id=f"assertion:{i}",
+                        before="",
+                        after=d.text,
+                        reason="defeater added",
+                    )
+                )
+    before_res = set(before.residual_uncertainty)
+    for r in after.residual_uncertainty:
+        if r not in before_res:
+            ops.append(
+                PatchOp(
+                    op="add_residual",
+                    target_id="risk:new",
+                    before="",
+                    after=r,
+                    reason="residual added",
+                )
+            )
+    return ops
+
+
+async def _critique_patch(
+    req: CriteriaPatchRequest,
+    *,
+    model: str,
+) -> CriteriaPatchResult:
+    warnings: list[str] = []
+    payload = {
+        "prompt": req.prompt.strip(),
+        "clock": _clock_context(),
+        "focus": req.focus.model_dump(),
+        "note": (req.note or "").strip(),
+        "answer": req.answer.model_dump(),
+        "gather": req.gather.model_dump() if req.gather is not None else None,
+        "evidence_needs": (
+            req.evidence_needs.model_dump() if req.evidence_needs is not None else None
+        ),
+        "criteria": req.criteria.model_dump() if req.criteria is not None else None,
+        "instruction": (
+            "Apply the user's critique to the focused atom. Return patched "
+            "answer + ops. Keep changes local."
+        ),
+    }
+    user_prompt = json.dumps(payload, ensure_ascii=False, indent=2)
+    result = await client.chat(
+        messages=[
+            {"role": "system", "content": _PATCH_CRITIQUE_SYSTEM},
+            {"role": "user", "content": user_prompt},
+        ],
+        model=model,
+        temperature=0.2,
+    )
+    db.log_call(req.run_id, "criteria_patch_critique", "criteria", result, user_prompt)
+
+    try:
+        parsed = parse_json_loose(result.content)
+    except LLMError:
+        parsed = {}
+        warnings.append("Failed to parse critique JSON; falling back to stub.")
+        stub = stub_patch_criteria(req)
+        stub.warnings = warnings + list(stub.warnings)
+        return stub
+
+    if not isinstance(parsed, dict):
+        stub = stub_patch_criteria(req)
+        stub.warnings = ["Critique payload was not an object; stub fallback."] + list(
+            stub.warnings
+        )
+        return stub
+
+    prior = req.answer.model_copy(deep=True)
+    answer, merge_w = _merge_patched_answer(
+        prior,
+        parsed.get("answer"),
+        criteria=req.criteria,
+        gather=req.gather,
+    )
+    warnings.extend(merge_w)
+    ops = _parse_ops(parsed.get("ops"))
+    if not ops:
+        ops = _diff_ops(prior, answer)
+    ops.append(
+        PatchOp(
+            op="annotate",
+            target_id=req.focus.id or req.focus.kind,
+            before=req.focus.text,
+            after=f"critique: {(req.note or req.focus.text)[:160]}",
+            reason="focus feedback",
+        )
+    )
+    summary_line = str(parsed.get("summary_line") or "").strip() or (
+        "Critique applied"
+    )
+    calls = _call_summaries(req.run_id)
+    return CriteriaPatchResult(
+        run_id=req.run_id,
+        model=result.model,
+        stub=False,
+        action="critique",
+        answer=answer,
+        gather=req.gather,
+        ops=ops,
+        summary_line=summary_line,
+        calls=calls,
+        total_tokens=sum(c.total_tokens for c in calls),
+        total_cost_usd=sum(c.cost_usd for c in calls),
+        warnings=warnings,
+    )
+
+
+async def _probe_patch(
+    req: CriteriaPatchRequest,
+    *,
+    model: str,
+) -> CriteriaPatchResult:
+    warnings: list[str] = []
+    answer = req.answer.model_copy(deep=True)
+    gather = (
+        req.gather.model_copy(deep=True)
+        if req.gather is not None
+        else GatherPacket(version=GATHER_VERSION, retrieval_status="gathered")
+    )
+    note = (req.note or "").strip()
+    focus_bit = (req.focus.text or req.focus.id or "focus").strip()
+    probe_line = note or f"Probe opened on: {focus_bit[:160]}"
+    ops: list[PatchOp] = [
+        PatchOp(
+            op="mark_open",
+            target_id=req.focus.id or req.focus.kind,
+            before="",
+            after=probe_line,
+            reason="probe",
+        )
+    ]
+
+    residual = f"OPEN probe: {probe_line}"
+    answer.residual_uncertainty = list(answer.residual_uncertainty) + [residual]
+    ops.append(
+        PatchOp(
+            op="add_residual",
+            target_id="risk:new",
+            before="",
+            after=residual,
+            reason="probe queued as residual uncertainty",
+        )
+    )
+
+    plan = EvidenceNeedPlan(
+        version=EVIDENCE_NEEDS_VERSION,
+        scope=probe_line,
+        settlement_checks=[
+            EvidenceNeedItem(
+                kind="settlement",
+                statement=probe_line,
+                salience="high",
+                derived_from=[req.focus.id or req.focus.kind],
+            )
+        ],
+        defeater_hunts=[],
+        class_hints=[],
+        non_needs=[],
+        retrieval_status="planned_only",
+        note="Focus-mode live probe.",
+    )
+
+    criteria_bits: dict[str, Any] = {}
+    if req.criteria is not None:
+        criteria_bits = {
+            "inquiry_type": req.criteria.inquiry_type,
+            "resolution_mode": req.criteria.resolution_mode,
+            "required_ports": req.criteria.required_ports,
+            "answerhood": req.criteria.answerhood.model_dump(),
+            "prompt_fixes": req.criteria.prompt_fixes,
+            "prompt_leaves_open": req.criteria.prompt_leaves_open,
+        }
+
+    payload = {
+        "prompt": req.prompt.strip(),
+        "clock": _clock_context(),
+        "focus": req.focus.model_dump(),
+        "note": note,
+        "criteria": criteria_bits or None,
+        "evidence_needs": plan.model_dump(),
+        "instruction": (
+            "Use web_search to probe this focused need only. Return JSON finds "
+            "with real provenance. Do not invent URLs. Prefer 1-4 finds."
+        ),
+    }
+    user_prompt = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    model_name = model
+    summary_line = "Probe open"
+    try:
+        result = await client.responses_with_web_search(
+            model=model,
+            system=_GATHER_SYSTEM,
+            user=user_prompt,
+        )
+        db.log_call(
+            req.run_id, "criteria_patch_probe", "criteria", result, user_prompt
+        )
+        try:
+            parsed = parse_json_loose(result.content)
+        except LLMError:
+            parsed = {}
+            warnings.append("Probe gather JSON parse failed.")
+        packet, gather_w = _normalize_gather(
+            parsed,
+            citations=list(result.citations or []),
+            plan=plan,
+        )
+        warnings.extend(gather_w)
+
+        existing_ids = {f.id for f in gather.finds}
+        appended = 0
+        for f in packet.finds:
+            fid = f.id
+            if fid in existing_ids:
+                fid = f"probe-{len(gather.finds) + appended + 1}"
+                f = f.model_copy(update={"id": fid})
+            gather.finds = list(gather.finds) + [f]
+            existing_ids.add(f.id)
+            appended += 1
+            ops.append(
+                PatchOp(
+                    op="add_claim",
+                    target_id=f"claim:{f.id}",
+                    before="",
+                    after=f.claim,
+                    reason="live probe find",
+                )
+            )
+        if packet.citations:
+            gather.citations = list(
+                dict.fromkeys([*gather.citations, *packet.citations])
+            )
+        if appended:
+            gather.retrieval_status = "gathered"
+            gather.note = "Focus probe appended live finds."
+            summary_line = f"Probe gathered · {appended} new claim(s)"
+        else:
+            if gather.retrieval_status == "skipped":
+                gather.retrieval_status = "gather_failed"
+            warnings.append("Probe search returned no usable finds.")
+            summary_line = "Probe open · no new finds"
+        model_name = result.model
+    except MissingKeyError:
+        raise
+    except LLMError as exc:
+        warnings.append(f"Live probe failed ({exc}); residual still opened.")
+        summary_line = "Probe open · retrieval failed"
+
+    ops.append(
+        PatchOp(
+            op="annotate",
+            target_id=req.focus.id or req.focus.kind,
+            before=req.focus.text,
+            after=f"probe: {probe_line[:160]}",
+            reason="focus feedback",
+        )
+    )
+
+    calls = _call_summaries(req.run_id)
+    return CriteriaPatchResult(
+        run_id=req.run_id,
+        model=model_name,
+        stub=False,
+        action="probe",
+        answer=answer,
+        gather=gather,
+        ops=ops,
+        summary_line=summary_line,
+        calls=calls,
+        total_tokens=sum(c.total_tokens for c in calls),
+        total_cost_usd=sum(c.cost_usd for c in calls),
+        warnings=warnings,
+    )
+
+
+async def patch_to_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
+    """Focus Mode patch: live critique LLM or live probe gather (+ stub fallback)."""
+    from ..config import settings
+
+    model = (req.model or settings.default_model).strip() or settings.default_model
+    if req.action == "critique":
+        out = await _critique_patch(req, model=model)
+    else:
+        out = await _probe_patch(req, model=model)
+
+    log = criteria_log.load_run(req.run_id) or {}
+    prior_patches = log.get("patches") if isinstance(log.get("patches"), list) else []
+    out.revision_index = len(prior_patches) + 1
+
+    criteria_log.persist_patch(
+        run_id=req.run_id,
+        prompt=req.prompt.strip(),
+        patch={
+            "action": out.action,
+            "stub": out.stub,
+            "summary_line": out.summary_line,
+            "ops": [o.model_dump() for o in out.ops],
+            "answer": out.answer.model_dump(),
+            "gather": out.gather.model_dump() if out.gather is not None else None,
+            "model": out.model,
+            "total_tokens": out.total_tokens,
+            "total_cost_usd": out.total_cost_usd,
+            "warnings": out.warnings,
+        },
+    )
+    return out

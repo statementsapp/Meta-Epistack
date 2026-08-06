@@ -67,6 +67,7 @@ def persist_design(
         "evidence_needs": existing.get("evidence_needs"),
         "gather": existing.get("gather"),
         "answer": existing.get("answer"),
+        "patches": existing.get("patches") or [],
     }
     _write(payload)
     design_bouncer = design.get("bouncer") or {}
@@ -201,6 +202,76 @@ def persist_answer(
             "headline": (answer.get("answer") or {}).get("headline"),
             "total_tokens": answer.get("total_tokens"),
             "total_cost_usd": answer.get("total_cost_usd"),
+            "path": str(_run_path(run_id).as_posix()),
+        }
+    )
+    return existing
+
+
+def persist_patch(
+    *,
+    run_id: int,
+    prompt: str,
+    patch: dict[str, Any],
+) -> dict[str, Any]:
+    """Append a Focus Mode patch revision onto the criteria run log."""
+    _ensure_dirs()
+    existing = load_run(run_id) or {
+        "schema_version": LOG_SCHEMA_VERSION,
+        "run_id": run_id,
+        "kind": "criteria",
+        "created_at": _now(),
+        "prompt": prompt,
+        "design": None,
+        "patches": [],
+    }
+    existing["updated_at"] = _now()
+    existing["prompt"] = prompt or existing.get("prompt") or ""
+    patches = existing.get("patches")
+    if not isinstance(patches, list):
+        patches = []
+    entry = {
+        "at": existing["updated_at"],
+        "revision_index": len(patches) + 1,
+        "action": patch.get("action"),
+        "stub": bool(patch.get("stub")),
+        "summary_line": patch.get("summary_line") or "",
+        "ops": patch.get("ops") or [],
+        "answer": patch.get("answer"),
+        "gather": patch.get("gather"),
+        "model": patch.get("model"),
+        "total_tokens": patch.get("total_tokens"),
+        "total_cost_usd": patch.get("total_cost_usd"),
+        "warnings": patch.get("warnings") or [],
+    }
+    patches.append(entry)
+    existing["patches"] = patches
+    # Latest patched answer/gather become the run's current snapshot.
+    if isinstance(patch.get("answer"), dict):
+        prev = existing.get("answer") if isinstance(existing.get("answer"), dict) else {}
+        merged_answer = dict(prev)
+        merged_answer["answer"] = patch["answer"]
+        if patch.get("gather") is not None:
+            merged_answer["gather"] = patch["gather"]
+        existing["answer"] = merged_answer
+    if isinstance(patch.get("gather"), dict):
+        existing["gather"] = {
+            **(existing.get("gather") if isinstance(existing.get("gather"), dict) else {}),
+            "gather": patch["gather"],
+        }
+    _write(existing)
+    _append_index(
+        {
+            "at": existing["updated_at"],
+            "event": "patch",
+            "run_id": run_id,
+            "prompt_preview": (existing.get("prompt") or "")[:160],
+            "action": patch.get("action"),
+            "stub": bool(patch.get("stub")),
+            "revision_index": entry["revision_index"],
+            "ops": len(entry["ops"]) if isinstance(entry["ops"], list) else 0,
+            "total_tokens": patch.get("total_tokens"),
+            "total_cost_usd": patch.get("total_cost_usd"),
             "path": str(_run_path(run_id).as_posix()),
         }
     )

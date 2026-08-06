@@ -1841,7 +1841,7 @@ a.answer-find-chip:hover {
   margin-top: 12px;
   max-width: 36rem;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   padding: 7px 10px;
@@ -1854,6 +1854,82 @@ a.answer-find-chip:hover {
 .nimble-patch-ribbon.is-stub {
   border-left-color: rgba(230, 190, 120, 0.75);
   color: rgba(255, 236, 200, 0.9);
+}
+
+.nimble-patch-ribbon-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nimble-patch-ribbon-line {
+  line-height: 1.35;
+}
+
+.nimble-patch-rev {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--nimble-leaf);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.nimble-patch-ops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nimble-patch-ops li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.nimble-patch-op-k {
+  color: rgba(198, 217, 171, 0.85);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nimble-patch-before {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.nimble-patch-arrow {
+  opacity: 0.5;
+}
+
+.nimble-patch-after {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nimble-patch-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.nimble-focus-source {
+  font-size: 12px;
+  color: var(--nimble-leaf);
+  word-break: break-all;
+}
+
+.nimble-focus-source.is-plain {
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
 }
 
 .nimble-lens {

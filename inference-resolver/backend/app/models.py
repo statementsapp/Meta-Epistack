@@ -333,6 +333,16 @@ class AnswerAssertion(BaseModel):
     find_ids: list[str] = Field(default_factory=list)
 
 
+class SummarySpanMark(BaseModel):
+    """Model-emitted (or validated) hotmark into the answer summary."""
+
+    id: str
+    start: int
+    end: int
+    text: str = ""
+    target_ids: list[str] = Field(default_factory=list)
+
+
 class CriteriaAnswer(BaseModel):
     headline: str
     summary: str = ""
@@ -340,6 +350,7 @@ class CriteriaAnswer(BaseModel):
     assertions: list[AnswerAssertion] = Field(default_factory=list)
     residual_uncertainty: list[str] = Field(default_factory=list)
     working_query_schema: str = ""
+    summary_spans: list[SummarySpanMark] = Field(default_factory=list)
 
 
 class CriteriaAnswerResult(BaseModel):
@@ -380,6 +391,7 @@ class CriteriaPatchRequest(BaseModel):
     answer: CriteriaAnswer
     gather: Optional[GatherPacket] = None
     evidence_needs: Optional[EvidenceNeedPlan] = None
+    criteria: Optional[CriteriaObject] = None
 
 
 class PatchOp(BaseModel):
@@ -402,12 +414,13 @@ class PatchOp(BaseModel):
 class CriteriaPatchResult(BaseModel):
     run_id: int
     model: str
-    stub: bool = True
+    stub: bool = False
     action: Literal["critique", "probe"]
     answer: CriteriaAnswer
     gather: Optional[GatherPacket] = None
     ops: list[PatchOp] = Field(default_factory=list)
     summary_line: str = ""
+    revision_index: int = 0
     calls: list[CallSummary] = Field(default_factory=list)
     total_tokens: int = 0
     total_cost_usd: float = 0.0

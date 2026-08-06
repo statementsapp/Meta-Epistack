@@ -129,6 +129,7 @@ export const api = {
     answer: CriteriaAnswer;
     gather?: GatherPacket;
     evidence_needs?: EvidenceNeedPlan;
+    criteria?: CriteriaObject;
   }): Promise<CriteriaPatchResult> =>
     fetch("/api/criteria/patch", {
       method: "POST",

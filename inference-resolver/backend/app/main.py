@@ -275,15 +275,17 @@ async def answer_criteria(req: CriteriaAnswerRequest) -> CriteriaAnswerResult:
 
 @app.post("/api/criteria/patch", response_model=CriteriaPatchResult)
 async def patch_criteria(req: CriteriaPatchRequest) -> CriteriaPatchResult:
-    """Focus-mode patch (stub): critique/probe without a full re-answer."""
+    """Focus-mode patch: live critique or live probe without a full re-answer."""
     if db.get_run(req.run_id) is None:
         raise HTTPException(404, "Run not found.")
     if req.action not in ("critique", "probe"):
         raise HTTPException(400, "action must be critique or probe")
     try:
-        return criteria_design.stub_patch_criteria(req)
-    except Exception as exc:
-        raise HTTPException(502, f"Patch failed: {exc}") from exc
+        return await criteria_design.patch_to_criteria(req)
+    except MissingKeyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @app.get("/api/criteria/runs")
