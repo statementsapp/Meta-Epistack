@@ -157,6 +157,10 @@ class CriteriaObject(BaseModel):
     # erotetic | stack | pragmatic for each required port
     port_layers: dict[str, str] = Field(default_factory=dict)
     answerhood: AnswerhoodSketch = Field(default_factory=AnswerhoodSketch)
+    # mechanism_inference | discourse_map | mixed
+    resolution_mode: Literal[
+        "mechanism_inference", "discourse_map", "mixed"
+    ] = "mechanism_inference"
     presuppositions: list[Presupposition] = Field(default_factory=list)
     prompt_fixes: str = ""
     prompt_leaves_open: str = ""
@@ -306,10 +310,17 @@ class AnswerSection(BaseModel):
     items: list[str] = Field(default_factory=list)
 
 
+class AnswerDefeater(BaseModel):
+    text: str
+    salience: Literal["high", "medium", "low"] = "medium"
+    find_ids: list[str] = Field(default_factory=list)
+
+
 class AnswerAssertion(BaseModel):
     statement: str
     basis: str = ""
-    defeaters: list[str] = Field(default_factory=list)
+    defeaters: list[AnswerDefeater] = Field(default_factory=list)
+    find_ids: list[str] = Field(default_factory=list)
 
 
 class CriteriaAnswer(BaseModel):
@@ -318,6 +329,7 @@ class CriteriaAnswer(BaseModel):
     sections: list[AnswerSection] = Field(default_factory=list)
     assertions: list[AnswerAssertion] = Field(default_factory=list)
     residual_uncertainty: list[str] = Field(default_factory=list)
+    working_query_schema: str = ""
 
 
 class CriteriaAnswerResult(BaseModel):

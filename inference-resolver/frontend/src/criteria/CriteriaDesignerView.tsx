@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 import { useStore } from "../store";
 import { AnswerOverlay } from "./AnswerOverlay";
@@ -20,7 +20,6 @@ import {
 } from "./types";
 
 const fmtCost = (v: number) => `$${v.toFixed(4)}`;
-const OVERLAY_DELAY_MS = 12000;
 
 type FlowPhase = "idle" | "needs" | "gather" | "answer";
 
@@ -47,15 +46,8 @@ export function CriteriaDesignerView() {
   const [gatherError, setGatherError] = useState<string | null>(null);
 
   const generationRef = useRef(0);
-  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const model = storeModel || health?.default_model || "";
-
-  useEffect(() => {
-    return () => {
-      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-    };
-  }, []);
 
   const mergeRunStats = (partial: {
     run_id: number;
@@ -79,10 +71,6 @@ export function CriteriaDesignerView() {
 
   const clearAnswerFlow = () => {
     generationRef.current += 1;
-    if (overlayTimerRef.current) {
-      clearTimeout(overlayTimerRef.current);
-      overlayTimerRef.current = null;
-    }
     setOverlayOpen(false);
     setCriteriaOverlayOpen(false);
     setFlowPhase("idle");
@@ -118,12 +106,8 @@ export function CriteriaDesignerView() {
     setNeedsError(null);
     setGatherPacket(null);
     setGatherError(null);
-    setOverlayOpen(false);
-
-    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-    overlayTimerRef.current = setTimeout(() => {
-      if (generationRef.current === gen) setOverlayOpen(true);
-    }, OVERLAY_DELAY_MS);
+    setCriteriaOverlayOpen(false);
+    setOverlayOpen(true);
 
     void (async () => {
       let plan: EvidenceNeedPlan | undefined;
@@ -189,6 +173,8 @@ export function CriteriaDesignerView() {
         });
         if (generationRef.current !== gen) return;
         setAnswerPayload(answered);
+        if (answered.gather) setGatherPacket(answered.gather);
+        if (answered.evidence_needs) setNeedsPlan(answered.evidence_needs);
         setAnswerLoading(false);
         setFlowPhase("idle");
         mergeRunStats(answered);
@@ -346,6 +332,7 @@ export function CriteriaDesignerView() {
                 <EvidenceNeedsPanel
                   plan={needsPlan}
                   loading={flowPhase === "needs" && !needsPlan}
+                  resolutionMode={criteria.resolution_mode}
                 />
               )}
               {(gatherPacket || flowPhase === "gather") && (
@@ -374,6 +361,11 @@ export function CriteriaDesignerView() {
           model={answerPayload?.model ?? result?.model}
           totalTokens={answerPayload?.total_tokens ?? result?.total_tokens}
           totalCostUsd={answerPayload?.total_cost_usd ?? result?.total_cost_usd}
+          runId={answerPayload?.run_id ?? result?.run_id ?? null}
+          flowPhase={flowPhase}
+          criteria={criteria}
+          needsPlan={needsPlan}
+          gather={gatherPacket}
           onClose={() => setOverlayOpen(false)}
         />
       )}
@@ -384,9 +376,11 @@ export function CriteriaDesignerView() {
 function EvidenceNeedsPanel({
   plan,
   loading,
+  resolutionMode,
 }: {
   plan: EvidenceNeedPlan | null;
   loading: boolean;
+  resolutionMode?: string;
 }) {
   if (loading) {
     return (
@@ -398,11 +392,22 @@ function EvidenceNeedsPanel({
   }
   if (!plan) return null;
 
+  const mode = resolutionMode || "mechanism_inference";
+  const modeHint =
+    mode === "discourse_map"
+      ? "Needs may target speakers and position structure."
+      : mode === "mixed"
+        ? "Keep mechanism-settling needs distinct from discourse-mapping needs."
+        : "Needs target observables and cell/program-ruling evidence, not debate coverage.";
+
   return (
     <div className="panel evidence-needs-panel">
       <div className="section-title">Evidence needs</div>
       <p className="criteria-prose">{plan.note}</p>
-      <p className="criteria-log-hint">Status: {plan.retrieval_status}</p>
+      <p className="criteria-log-hint">
+        Status: {plan.retrieval_status} · mode: {mode.replace(/_/g, " ")}
+      </p>
+      <p className="criteria-prose">{modeHint}</p>
       {plan.scope && (
         <>
           <div className="section-title">Scope</div>
@@ -704,6 +709,15 @@ function CriteriaPanel({
           <>
             <div className="section-title">Answerhood (excavated)</div>
             <div className="inspector-link">
+              <div className="metric">
+                <span>resolution mode</span>
+                <span className="val">
+                  {(criteria.resolution_mode || "mechanism_inference").replace(
+                    /_/g,
+                    " ",
+                  )}
+                </span>
+              </div>
               <div className="metric">
                 <span>partition licensed</span>
                 <span className="val">

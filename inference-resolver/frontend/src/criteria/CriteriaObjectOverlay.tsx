@@ -6,6 +6,7 @@ function criteriaPayload(criteria: CriteriaObject) {
     prompt_hash: criteria.prompt_hash,
     inquiry_type: criteria.inquiry_type,
     logic_fragment: criteria.logic_fragment,
+    resolution_mode: criteria.resolution_mode,
     required_ports: criteria.required_ports,
     port_layers: criteria.port_layers,
     port_parameters: criteria.port_parameters,

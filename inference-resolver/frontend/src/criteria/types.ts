@@ -168,6 +168,11 @@ export interface Presupposition {
   status: "accepted" | "contested" | "challengeable";
 }
 
+export type ResolutionMode =
+  | "mechanism_inference"
+  | "discourse_map"
+  | "mixed";
+
 export interface CriteriaObject {
   prompt_hash: string;
   inquiry_type: string;
@@ -177,6 +182,7 @@ export interface CriteriaObject {
   port_applicability: Record<string, string>;
   port_layers?: Record<string, string>;
   answerhood?: AnswerhoodSketch;
+  resolution_mode?: ResolutionMode;
   presuppositions?: Presupposition[];
   prompt_fixes?: string;
   prompt_leaves_open?: string;
@@ -219,10 +225,17 @@ export interface AnswerSection {
   items: string[];
 }
 
+export interface AnswerDefeater {
+  text: string;
+  salience: "high" | "medium" | "low";
+  find_ids: string[];
+}
+
 export interface AnswerAssertion {
   statement: string;
   basis: string;
-  defeaters: string[];
+  defeaters: AnswerDefeater[];
+  find_ids: string[];
 }
 
 export interface CriteriaAnswer {
@@ -231,6 +244,7 @@ export interface CriteriaAnswer {
   sections: AnswerSection[];
   assertions: AnswerAssertion[];
   residual_uncertainty: string[];
+  working_query_schema?: string;
 }
 
 export interface AnswerResult {

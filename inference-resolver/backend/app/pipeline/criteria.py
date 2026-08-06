@@ -13,6 +13,7 @@ from typing import Any
 from ..llm import LLMError, client, parse_json_loose
 from ..models import (
     AnswerAssertion,
+    AnswerDefeater,
     AnswerhoodSketch,
     AnswerSection,
     CallSummary,
@@ -78,48 +79,70 @@ PROCESS (admitted prompts only; do this in order)
    answer (direct complete answer; admissible partial answer; when challenging a
    presupposition is in-bounds vs evasion). State operative presuppositions and
    whether a partition of answer-space is licensed by the question's form.
-2. SEPARATE LAYERS: distinguish criteria the question itself implies (erotetic)
-   from stack norms you add (stack) from chatbot/helpfulness defaults the bare
-   interrogative does not fix (pragmatic). Prefer erotetic; add stack only where
-   the best answer still needs it; add pragmatic rarely and label it.
+   Also set resolution_mode:
+   - mechanism_inference: what happened / caused it / which hypothesis or
+     scientific program constraints hold (even if public materials are debates)
+   - discourse_map: who argued what / who won a debate / position structure
+   - mixed: both layers in-bounds; keep them separate
+2. SEPARATE LAYERS: erotetic (from the question), stack (standing investigation
+   norms), pragmatic (chatbot/helpfulness surplus). Prefer erotetic for optional
+   ports. revision_protocol is a standing stack norm for any non-trivial answer
+   assertion; label it stack unless the question itself clearly demands
+   defeaters. Add other stack only where the best answer still needs it; add
+   pragmatic rarely and label it.
 3. ENCODE: map the excavation onto the fixed port schema. Do not start from
    port shopping. Every required port must catch a failure of answering THIS
    prompt. If it only catches "failure to look like our stack," do not require it.
+   Tailor required_ports and port_parameters to resolution_mode (see RULES).
 4. MARK UNDERDETERMINATION: say what the prompt fixes vs what remains a choice.
 
 RULES
 - Criteria are requirements on the eventual answer only. Do not emit criteria
   about upstream search, retrieval, ingestion, or how sources are pulled in.
 - Criteria stay abstract: never hard-code domain-specific hypotheses or content.
-- Prefer deterministic theorems + explicit observation maps over free-form
-  probability language when the question licenses that form.
+- Prefer explicit observation maps over free-form probability language when the
+  question licenses that form. Do not require theorem for ordinary empirical or
+  predictive forecasts.
 - Keep intersubjective (publicly checkable) and agent-relative layers
   syntactically separate when both appear.
 - Every non-trivial assertion made by the eventual answer needs a revision
   protocol (declared defeaters). These answer assertions are not the source
   claims that may later be ingested as evidence. The revision_protocol port
-  ACCEPTS only salience-weighted defeaters: lead with near-term /
-  high-base-rate defeaters under the prompt's horizon; rare or long-horizon
-  defeaters may be included but only briefly, in proportion to rarity (even
-  when that short note slightly diverts flow). Do not treat exotic or remote
-  defeaters as equally weighted satisfiers of the port. Encode this in
-  port_parameters.revision_protocol (e.g. salience_weighted: true and any
-  structural notes), not as a global answer-style rule.
-- Meta-exhaustiveness requires coverage of the answer space when the question
-  makes completeness meaningful. Concrete enumeration is allowed when it
-  strengthens that coverage; do not impose self-limiting "do not enumerate"
-  constraints.
-- Prefer ambitious criteria that tighten answerhood (clearer resolution
-  conditions). Do not smuggle unasked exams.
+  ACCEPTS salience-weighted defeaters. Salience means importance under the
+  prompt's subject and working horizon; base rate is one input, not the
+  definition. Lead with high-salience defeaters; subject-salient rare or
+  long-horizon defeaters MUST appear at least briefly; do not omit all of them;
+  they must not dominate. Encode salience_weighted: true in
+  port_parameters.revision_protocol.
+- Meta-exhaustiveness covers the declared working schema when completeness is
+  meaningful. Do not claim exhaustiveness over undeclared futures.
+- Ambition test: owning items in prompt_leaves_open with a labeled working
+  query schema tightens answerhood and is allowed. Unasked exams are not.
 - The port schema never changes; only required_ports and port_parameters vary.
-- Generated criteria are a working schema for this prompt, revisable when a
-  better answer reveals a better question-answer complex. They are not a rigid
-  prior the answer must cosplay.
-- PARTITION DISCIPLINE: if the prompt is partition-like (yes/no, who among
-  alternatives, closed identification with clear cells), canonical_form should
-  state the cells. If the prompt is open, do NOT invent a fake exhaustive
-  partition to look structural. Use open_answerhood: what counts as a resolving
-  contribution and what remains essentially incomplete.
+- Generated criteria are a fallible working schema for this run, not a rigid
+  prior. Mid-run automatic rewrite of the criteria object is not assumed.
+- PARTITION VS OPEN QUERY SCHEMA: if the prompt is partition-like (yes/no, who
+  among alternatives, closed identification with clear cells), canonical_form
+  should state the cells. If open, do NOT invent a fake exhaustive partition.
+  Use open_answerhood. When prompt_leaves_open includes horizon, metric, or
+  conditioning frame (or open_answerhood says incomplete without it), require
+  canonical_form as an open query schema (working horizons / scenario-driver
+  axes, labeled as working choices). Dropping that merely because the prompt
+  did not fix calendar years is an audit error.
+- RESOLUTION MODE AND DYNAMIC PORT ESSENTIALS:
+  * mechanism_inference: prefer licensed hypothesis partitions when licensed;
+    else open schema over constraints/non-exhaustive programs. Prefer requiring
+    observation_map with observable settlement predicates first (not talking
+    points). revision_protocol defeaters rule cells/programs in or out; "lost
+    the debate" is not a defeater. meta_exhaustiveness covers the declared
+    mechanism/hypothesis schema only. source_class_ranking weights evidence
+    classes, not speaker prestige. Answerhood targets supported / ruled out /
+    underdetermined; not debate scores or unbacked numeric posteriors. For
+    unsettled speculative science, keep partition_licensed false when no
+    exhaustive cell set is licensed.
+  * discourse_map: speaker/position structure may be in-bounds; do not force
+    mechanism-first observation maps merely to look scientific.
+  * mixed: require layer_separation when both layers appear; do not conflate.
 - Direct / partial / presupposition-challenge: state which response kinds are
   in-bounds. Do not treat only "looks complete under ports" as success.
 
@@ -139,11 +162,12 @@ REJECT (admitted=false) only when one of these holds:
 - preference_aesthetic: resolves entirely to the asker's taste; no factual
   core survives once preference is set aside (no coherent public answerhood)
 - open_future_prediction: the future outcome has NO regularity, base rate,
-  structural driver, or bounding constraint any evidence could bear on. Long
-  horizon or open-endedness alone is not enough: if standing regularities,
-  trends, mechanisms, or scenario partitions exist that evidence could speak
-  to, ADMIT as predictive_constrained and let canonical_form declare the
-  partition or conditioning frame.
+  structural driver, bounding constraint, OR workable conditioning/query schema
+  any evidence could speak to. Long horizon or missing specifics alone is not
+  enough: if standing regularities, trends, mechanisms, or a workable
+  conditioning frame exist, ADMIT as predictive_constrained and let
+  canonical_form declare an open query schema or conditioning frame (not a fake
+  exhaustive partition unless partition_licensed).
 - pure_normative: asks only what ought to be, with no factual, empirical, or
   policy-text core to check. A normative prompt with a separable factual layer
   is admitted (layer_separation handles the split).
@@ -194,6 +218,7 @@ Respond with ONE JSON object only, matching this shape:
     "partition_licensed": boolean,
     "open_answerhood": string
   },
+  "resolution_mode": "mechanism_inference"|"discourse_map"|"mixed",
   "presuppositions": [
     {"text": string, "status": "accepted"|"contested"|"challengeable"}
   ],
@@ -239,40 +264,43 @@ when ALL of these hold:
    sources are searched, ranked, or ingested before answering.
 6. EROTETICALLY GROUNDED: it catches a failure of answering THIS prompt given
    the excavated answerhood conditions, OR it is an explicitly labeled stack
-   surplus that is still necessary for the best answer. Drop ports that only
-   enforce looking like the stack. If partition_licensed is false, reject
-   canonical_form / meta_exhaustiveness parameters that invent a fake
-   exhaustive partition; open answerhood is allowed instead.
+   surplus that is still necessary for the best answer (including standing
+   revision_protocol). Drop ports that only enforce looking like the stack.
+   If partition_licensed is false, reject canonical_form / meta_exhaustiveness
+   parameters that invent a fake exhaustive licensed partition.
+   OPEN-SCHEMA EXCEPTION (decisive): if open_answerhood or prompt_leaves_open
+   says resolution is incomplete without a horizon, metric, or conditioning
+   frame, then canonical_form as an open QuerySchema is NECESSARY. Do not drop
+   it for uncertainty, and do not drop it merely because the prompt did not
+   fix calendar years.
 
-Port contracts:
-- canonical_form: fixes what is being asked as a proposition, partition, or
-  query schema when the question's form licenses that; for open questions,
-  may fix an open query schema without fake cells.
-- theorem: supplies a deterministic derivation under declared logic. Applicable
-  only when the inquiry supports a genuine derivational constraint; do not use
-  it as a grand name for an ordinary empirical answer assertion or forecast.
-- observation_map: operationalizes an abstract answer assertion by mapping it
-  to observable predicates. It does NOT prove a future prediction and must not
-  be required merely because a prompt is empirical or predictive. For a
-  forecast it is applicable only if defining observable settlement conditions
-  materially resolves ambiguity that canonical_form does not already resolve.
-- layer_separation: separates publicly checkable answer assertions from
-  agent-relative values, preferences, or perspectives. Applicable only when
-  both layers are present or likely to be conflated.
-- revision_protocol: declares defeaters and update rules for assertions made by
-  the eventual answer, not source claims ingested as evidence. Applicable to
-  any non-trivial empirical, causal, comparative, or predictive answer
-  assertion. What this port ACCEPTS is salience-weighted: high-salience
-  defeaters first; rare/long-horizon defeaters brief and non-dominant.
-  Parameters should carry salience_weighted: true.
-- meta_exhaustiveness: requires the answer to cover the structure of the
-  answer space when completeness is meaningful. Enumeration is welcome when it
-  helps prove coverage. Do not invent exhaustiveness the question does not
-  license.
-- source_class_ranking: requires the answer itself to state how distinct
-  evidence classes it relies on are weighted. Not applicable merely because
-  retrieval will consult sources. Approve only when the best answer must make
-  that ranking explicit as part of its content.
+Port contracts (also respect resolution_mode on the candidate criteria):
+- canonical_form: proposition, licensed partition, or open query schema. For
+  mechanism_inference, prefer hypothesis cells or open program/constraint
+  schemas (not debater lists). For open predictive prompts, approve an open
+  query schema with working horizons when prompt_leaves_open includes horizon
+  or open_answerhood says incomplete without a frame.
+- theorem: genuine derivational constraint only. Do not approve for ordinary
+  empirical or predictive forecasts.
+- observation_map: settlement predicates for answer assertions. Under
+  mechanism_inference, usually approve when observables can speak; parameters
+  should be observable-first. Not auto-required for discourse_map. For
+  predictive prompts, approve when driver-to-outcome settlement is part of
+  direct answerhood and is not already fixed by canonical_form.
+- layer_separation: when intersubjective and agent-relative layers both appear,
+  or when resolution_mode is mixed.
+- revision_protocol: standing stack norm for non-trivial answer assertions.
+  Salience = importance under subject and working horizon (base rate is one
+  input). High-salience first; subject-salient rare/long-horizon tails must
+  appear at least briefly and must not dominate. Under mechanism_inference,
+  defeaters rule cells/programs in or out; "lost the debate" is not a defeater.
+  Parameters: salience_weighted: true.
+- meta_exhaustiveness: coverage of the declared working schema only. Under
+  mechanism_inference, that schema is hypothesis/mechanism structure, not
+  discourse coverage. No fake exhaustiveness over undeclared futures.
+- source_class_ranking: answer must weight evidence classes it relies on.
+  Under mechanism_inference, classes are evidential (not speaker prestige).
+  Not a search ranker; gather may later treat classes as consult hints.
 
 Approve only ports that constrain the best possible answer to this question.
 Uncertainty about whether a port is answer-facing or erotetically grounded
@@ -321,6 +349,13 @@ def _filter_ports(raw: Any) -> list[str]:
         if isinstance(p, str) and p in allowed and p not in out:
             out.append(p)
     return out
+
+
+def _resolution_mode_from(raw: Any) -> str:
+    mode = str(raw or "").strip()
+    if mode in ("mechanism_inference", "discourse_map", "mixed"):
+        return mode
+    return "mechanism_inference"
 
 
 def _answerhood_from(raw: Any) -> AnswerhoodSketch:
@@ -402,12 +437,14 @@ async def _audit_ports(
     answerhood: AnswerhoodSketch,
     presuppositions: list[Presupposition],
     port_layers: dict[str, str],
+    resolution_mode: str,
 ) -> tuple[list[str], dict[str, str], dict[str, str], list[str]]:
     audit_prompt = json.dumps(
         {
             "prompt": prompt,
             "inquiry_type": inquiry,
             "logic_fragment": fragment,
+            "resolution_mode": resolution_mode,
             "answerhood": answerhood.model_dump(),
             "presuppositions": [p.model_dump() for p in presuppositions],
             "candidate_required_ports": ports,
@@ -588,6 +625,7 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
     port_parameters = {k: v for k, v in port_parameters.items() if k in ports}
 
     answerhood = _answerhood_from(data.get("answerhood"))
+    resolution_mode = _resolution_mode_from(data.get("resolution_mode"))
     presuppositions = _presuppositions_from(data.get("presuppositions"))
     port_layers = _port_layers_from(data.get("port_layers"), ports)
     prompt_fixes = str(data.get("prompt_fixes") or "").strip()
@@ -604,6 +642,7 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
         answerhood=answerhood,
         presuppositions=presuppositions,
         port_layers=port_layers,
+        resolution_mode=resolution_mode,
     )
     port_parameters = {k: v for k, v in port_parameters.items() if k in ports}
     if "revision_protocol" in ports:
@@ -634,6 +673,7 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
         port_applicability=port_applicability,
         port_layers=port_layers,
         answerhood=answerhood,
+        resolution_mode=resolution_mode,  # type: ignore[arg-type]
         presuppositions=presuppositions,
         prompt_fixes=prompt_fixes,
         prompt_leaves_open=prompt_leaves_open,
@@ -643,7 +683,8 @@ async def design_criteria(prompt: str, model: str) -> CriteriaDesignResult:
     )
 
     note = (data.get("note") or "").strip() or (
-        f"Admitted as {inquiry}. Criteria are a tailored subset of structural ports."
+        f"Admitted as {inquiry} ({resolution_mode}). "
+        f"Criteria are a tailored subset of structural ports."
     )
 
     return _persist_design(
@@ -733,8 +774,22 @@ def _skeleton_evidence_needs(criteria: CriteriaObject, prompt: str) -> EvidenceN
     ports = set(criteria.required_ports)
     ah = criteria.answerhood
     params = criteria.port_parameters or {}
+    mode = criteria.resolution_mode
 
     scope_parts: list[str] = []
+    if mode == "mechanism_inference":
+        scope_parts.append(
+            "Mechanism-inference scope: prioritize observables and evidence that "
+            "rule hypothesis cells or research programs in or out."
+        )
+    elif mode == "discourse_map":
+        scope_parts.append(
+            "Discourse-map scope: prioritize who said what and how positions relate."
+        )
+    elif mode == "mixed":
+        scope_parts.append(
+            "Mixed scope: keep mechanism-settling evidence distinct from discourse mapping."
+        )
     if ah.direct_answer:
         scope_parts.append(ah.direct_answer.strip())
     elif ah.open_answerhood:
@@ -1018,19 +1073,30 @@ Emit what evidence would need to be gathered later to settle or responsibly
 defeat the best answer under these criteria.
 
 DIRECTION OF FIT
-- Derive needs FROM the criteria (answerhood, canonical scope, surviving
-  observation_map / revision_protocol / source_class_ranking parameters).
+- Derive needs FROM the criteria (answerhood, resolution_mode, canonical scope,
+  surviving observation_map / revision_protocol / source_class_ranking
+  parameters).
 - Do NOT invent needs for ports that are not in required_ports.
 - Do NOT treat answer ports as search endpoints. Ports stay answer-facing.
 - theorem, layer_separation, and meta_exhaustiveness shape the answer only;
   list them under non_needs, never as fetch targets.
 - source_class_ranking yields class_hints (which classes matter), not a
   retrieval ranker config.
+- If resolution_mode is mechanism_inference: settlement_checks and
+  defeater_hunts must target observables and evidence that would rule
+  hypothesis cells or research programs in or out. Do NOT plan needs as
+  "arguments on both sides" or debate coverage.
+- If resolution_mode is discourse_map: needs may target who said what and
+  position structure when that satisfies answerhood.
+- If mixed: keep mechanism-settling needs distinct from discourse-mapping needs.
 
 RULES
 - Be concrete and prompt-specific.
-- Prefer high-salience defeaters when revision_protocol is required; keep
-  exotic or long-horizon defeaters low salience and few.
+- Prefer high-salience defeaters when revision_protocol is required. Salience
+  means importance under subject and working horizon. Keep exotic or long-
+  horizon defeaters few and low-salience, but include at least one brief
+  subject-salient rare/long-horizon defeater hunt when such tails are
+  meaningful for the subject (omission of all such tails is wrong).
 - If observation_map is absent, settlement_checks must be [].
 - If revision_protocol is absent, defeater_hunts must be [].
 - If source_class_ranking is absent, class_hints must be [].
@@ -1313,6 +1379,7 @@ async def gather_evidence(
         "prompt": trimmed,
         "criteria": {
             "inquiry_type": criteria.inquiry_type,
+            "resolution_mode": criteria.resolution_mode,
             "required_ports": criteria.required_ports,
             "answerhood": criteria.answerhood.model_dump(),
             "prompt_fixes": criteria.prompt_fixes,
@@ -1446,27 +1513,40 @@ RULES
   when you have a real judgment about the matter.
 - Respect partition discipline: if answerhood.partition_licensed is false, do
   not invent fake exhaustive cells. If true, resolve which cell holds.
+- Respect resolution_mode:
+  * mechanism_inference: resolve via observables and hypothesis/program
+    support or ruling-out. Do not treat debate completeness or unbacked
+    numeric posteriors as resolution. Prefer supported / ruled out /
+    underdetermined.
+  * discourse_map: mapping positions and speakers may satisfy answerhood.
+  * mixed: keep mechanism claims separate from discourse claims.
 - Admissible partial answers or presupposition challenges are allowed only when
   the criteria mark them in-bounds; otherwise prefer a direct resolution.
 - If gather is present with finds: prefer those provenance-bearing claims for
   settlement and defeaters. Cite source_title / source_url when you rely on a
-  find. Do not invent additional URLs.
+  find. Attach find_ids (from gather.finds[].id) on assertions and defeaters
+  you rely on. Do not invent find_ids or URLs.
 - If gather is missing, failed, or empty: use your knowledge and judgment, and
   say under residual_uncertainty which evidence_needs remain unmet. Do NOT
-  pretend retrieval filled them.
+  pretend retrieval filled them. Leave find_ids empty.
 - If evidence_needs is present with retrieval_status planned_only: treat it as
   an unsettled plan only.
 - Fill every required port with content that matches its role AND carries the
   substance of your answer. Port prose should encode your actual view, not a
   schema lecture.
-- When revision_protocol is required, satisfy what that port accepts: salience-
-  weighted defeaters (see port_parameters.revision_protocol). Lead with high-
-  salience defeaters; keep rare/long-horizon ones brief and non-dominant. This
-  is a port-fulfillment rule, not a global style for the whole answer.
+- When revision_protocol is required, satisfy salience-weighted defeaters:
+  high-salience first (importance under subject and working horizon); at least
+  a brief subject-salient rare/long-horizon note; no exotic domination.
+  Omission of all such tails is a failure. Tag each defeater with salience.
+- When the prompt left horizon or conditioning open, state the working query
+  schema you adopted in working_query_schema (horizons / scenario axes) and
+  what remains incomplete. Do not pretend calendar years are an exhaustive
+  licensed partition.
 - Speak in answer assertions (statements the response asks readers to accept).
   Name real actors, events, and findings when they are part of your judgment.
 - Prefer deterministic structure under the declared logic fragment over vague
-  probability talk, without evacuating the answer.
+  probability talk, without evacuating the answer. Do not dress ordinary
+  forecasts as theorems.
 - Do not use em dashes in any text you write.
 - Do not invent fake citations, URLs, or document titles.
 - If the honest answer is uncertain, contested, or incomplete, state the leading
@@ -1477,6 +1557,7 @@ Return ONE JSON object only:
 {
   "headline": "one-sentence direct answer to the prompt",
   "summary": "short plain-language overview (2-4 sentences) of what you judge true",
+  "working_query_schema": "working horizons/axes adopted, or empty if not needed",
   "sections": [
     {
       "port": "<required port id>",
@@ -1489,7 +1570,14 @@ Return ONE JSON object only:
     {
       "statement": "answer assertion you are asking the reader to accept",
       "basis": "why you judge it true or best supported under the declared logic",
-      "defeaters": ["what would overturn it"]
+      "find_ids": ["optional gather find ids supporting this assertion"],
+      "defeaters": [
+        {
+          "text": "what would overturn it",
+          "salience": "high|medium|low",
+          "find_ids": ["optional gather find ids"]
+        }
+      ]
     }
   ],
   "residual_uncertainty": ["what remains open"]
@@ -1501,12 +1589,83 @@ prompt when the inquiry warrants it.
 """
 
 
-def _normalize_answer(raw: Any, criteria: CriteriaObject) -> tuple[CriteriaAnswer, list[str]]:
+def _filter_find_ids(raw: Any, allowed: set[str] | None) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        fid = str(item).strip()
+        if not fid:
+            continue
+        if allowed is not None and fid not in allowed:
+            continue
+        if fid not in out:
+            out.append(fid)
+    return out
+
+
+def _normalize_defeater(
+    raw: Any,
+    *,
+    allowed_finds: set[str] | None,
+) -> AnswerDefeater | None:
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        return AnswerDefeater(text=text, salience="medium", find_ids=[])
+    if not isinstance(raw, dict):
+        return None
+    text = str(raw.get("text") or raw.get("statement") or raw.get("defeater") or "").strip()
+    if not text:
+        return None
+    salience = raw.get("salience") or "medium"
+    if salience not in ("high", "medium", "low"):
+        salience = "medium"
+    return AnswerDefeater(
+        text=text,
+        salience=salience,  # type: ignore[arg-type]
+        find_ids=_filter_find_ids(raw.get("find_ids"), allowed_finds),
+    )
+
+
+def _working_schema_fallback(criteria: CriteriaObject, explicit: str) -> str:
+    if explicit:
+        return explicit
+    params = criteria.port_parameters or {}
+    cf = params.get("canonical_form")
+    if isinstance(cf, str) and cf.strip():
+        return cf.strip()
+    if isinstance(cf, dict) and cf:
+        return json.dumps(cf, ensure_ascii=False)[:500]
+    ah = criteria.answerhood
+    if ah.open_answerhood.strip():
+        return ah.open_answerhood.strip()
+    if criteria.prompt_leaves_open.strip():
+        return (
+            "Working frame still open; prompt left: "
+            + criteria.prompt_leaves_open.strip()
+        )
+    return ""
+
+
+def _normalize_answer(
+    raw: Any,
+    criteria: CriteriaObject,
+    gather: GatherPacket | None = None,
+) -> tuple[CriteriaAnswer, list[str]]:
     warnings: list[str] = []
     data = raw if isinstance(raw, dict) else {}
+    allowed_finds = (
+        {f.id for f in gather.finds if f.id} if gather is not None else None
+    )
 
     headline = str(data.get("headline") or "").strip() or "Draft answer unavailable."
     summary = str(data.get("summary") or "").strip()
+    working = _working_schema_fallback(
+        criteria,
+        str(data.get("working_query_schema") or "").strip(),
+    )
 
     by_port: dict[str, dict] = {}
     raw_sections = data.get("sections")
@@ -1558,16 +1717,18 @@ def _normalize_answer(raw: Any, criteria: CriteriaObject) -> tuple[CriteriaAnswe
             if not statement:
                 continue
             defeaters_raw = item.get("defeaters")
-            defeaters = (
-                [str(x).strip() for x in defeaters_raw if str(x).strip()]
-                if isinstance(defeaters_raw, list)
-                else []
-            )
+            defeaters: list[AnswerDefeater] = []
+            if isinstance(defeaters_raw, list):
+                for d in defeaters_raw:
+                    normalized = _normalize_defeater(d, allowed_finds=allowed_finds)
+                    if normalized:
+                        defeaters.append(normalized)
             assertions.append(
                 AnswerAssertion(
                     statement=statement,
                     basis=str(item.get("basis") or "").strip(),
                     defeaters=defeaters,
+                    find_ids=_filter_find_ids(item.get("find_ids"), allowed_finds),
                 )
             )
 
@@ -1585,6 +1746,7 @@ def _normalize_answer(raw: Any, criteria: CriteriaObject) -> tuple[CriteriaAnswe
             sections=sections,
             assertions=assertions,
             residual_uncertainty=residual,
+            working_query_schema=working,
         ),
         warnings,
     )
@@ -1631,7 +1793,7 @@ async def answer_to_criteria(
         parsed = {}
         warnings.append("Failed to parse answer JSON; returning placeholders.")
 
-    answer, normalize_warnings = _normalize_answer(parsed, criteria)
+    answer, normalize_warnings = _normalize_answer(parsed, criteria, gather)
     warnings.extend(normalize_warnings)
 
     calls = _call_summaries(run_id)

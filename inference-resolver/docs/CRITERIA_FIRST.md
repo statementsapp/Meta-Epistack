@@ -10,7 +10,8 @@ what is generated first, and what later stages are allowed to depend on.
 
 Conflict rule: if implementation or a plan inverts this order, **stop and
 align** to this file (and update prompts/code in the same change set if the
-settled policy itself is deliberately revised).
+settled policy itself is deliberately revised). Epistemic attitude changes
+also update [`EPISTEMOLOGY.md`](EPISTEMOLOGY.md).
 
 Schema version for the criteria artifact: `criteria-schema/v2` (see
 `backend/app/pipeline/criteria.py`).
@@ -20,7 +21,8 @@ Schema version for the criteria artifact: `criteria-schema/v2` (see
 ## 1. Stance
 
 1. **Criteria are generated directly from the user prompt** — bouncer, answerhood
-   excavation, required ports, port parameters, layers, and applicability audit.
+   excavation, `resolution_mode`, required ports, port parameters, layers, and
+   applicability audit.
 2. That audited **criteria object is the hub data structure** for the run.
 3. Everything after design **builds forward from that object**. Later stages may
    refine, attach, or satisfy it; they must not replace it with a parallel

@@ -3,11 +3,12 @@ import { InputPanel } from "./components/InputPanel";
 import { Dashboard } from "./components/Dashboard";
 import { Inspector } from "./components/Inspector";
 import { CriteriaDesignerView } from "./criteria/CriteriaDesignerView";
+import { NimbleView } from "./criteria/NimbleView";
 import { GraphView } from "./graph/GraphView";
 import { useStore } from "./store";
 import { linkColor } from "./theme";
 
-type AppView = "criteria" | "resolve";
+type AppView = "criteria" | "nimble" | "resolve";
 
 export function App() {
   const s = useStore();
@@ -21,21 +22,38 @@ export function App() {
   const selectedLink =
     s.result?.links.find((l) => l.id === s.selectedLinkId) ?? null;
 
+  const subtitle =
+    view === "criteria"
+      ? "design structural criteria before search or answer generation"
+      : view === "nimble"
+        ? "prompt stays primary; pipeline returns frame it as dense markup"
+        : "claims in, typed support/rebuttal graph out, with per-stage token cost";
+
   return (
-    <div className={`app ${view === "criteria" ? "view-criteria" : "view-resolve"}`}>
+    <div
+      className={`app ${
+        view === "criteria"
+          ? "view-criteria"
+          : view === "nimble"
+            ? "view-nimble"
+            : "view-resolve"
+      }`}
+    >
       <div className="topbar">
         <h1>Inference Resolver</h1>
-        <span className="subtitle">
-          {view === "criteria"
-            ? "design structural criteria before search or answer generation"
-            : "claims in, typed support/rebuttal graph out, with per-stage token cost"}
-        </span>
+        <span className="subtitle">{subtitle}</span>
         <div className="chip-row topbar-toggle">
           <span
             className={`chip ${view === "criteria" ? "active" : ""}`}
             onClick={() => setView("criteria")}
           >
             Criteria Designer
+          </span>
+          <span
+            className={`chip ${view === "nimble" ? "active" : ""}`}
+            onClick={() => setView("nimble")}
+          >
+            Nimble
           </span>
           <span
             className={`chip ${view === "resolve" ? "active" : ""}`}
@@ -53,6 +71,8 @@ export function App() {
 
       {view === "criteria" ? (
         <CriteriaDesignerView />
+      ) : view === "nimble" ? (
+        <NimbleView />
       ) : (
         <>
           <InputPanel />

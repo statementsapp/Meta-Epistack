@@ -363,7 +363,8 @@ a.link-btn {
 
 /* View toggle / Criteria Designer */
 
-.app.view-criteria {
+.app.view-criteria,
+.app.view-nimble {
   grid-template-columns: 1fr;
 }
 
@@ -683,6 +684,50 @@ a.link-btn {
   font-size: 11px;
 }
 
+.answer-grounding-strip {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  background: var(--panel-alt);
+  border-left: 2px solid var(--accent);
+}
+
+.answer-grounding-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.answer-find-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.answer-find-chip {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  text-decoration: none;
+}
+
+.answer-find-chip.muted {
+  color: var(--text-dim);
+}
+
+a.answer-find-chip:hover {
+  border-color: var(--accent);
+}
+
 .criteria-object-overlay-panel {
   width: min(960px, 96vw);
   height: min(88vh, 920px);
@@ -840,4 +885,482 @@ a.link-btn {
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+}
+
+/* Nimble view — user text primary; returns as dense framing */
+
+.nimble-view {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background:
+    radial-gradient(ellipse 80% 55% at 50% 35%, #1a2638 0%, transparent 65%),
+    linear-gradient(165deg, #121822 0%, #151a24 45%, #10151e 100%);
+}
+
+.nimble-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 72px 120px 88px;
+  overflow: hidden;
+}
+
+.nimble-frame-ring {
+  position: absolute;
+  inset: 48px 72px 64px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0.55;
+  animation: nimble-frame-in 700ms ease-out;
+}
+
+@keyframes nimble-frame-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+}
+
+.nimble-prompt-block {
+  position: relative;
+  z-index: 2;
+  width: min(720px, 100%);
+  text-align: center;
+}
+
+.nimble-prompt-input,
+.nimble-prompt-display {
+  width: 100%;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: clamp(22px, 3.2vw, 34px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-align: center;
+}
+
+.nimble-prompt-input {
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 8px 4px;
+  min-height: 140px;
+}
+
+.nimble-prompt-input::placeholder {
+  color: color-mix(in srgb, var(--text-dim) 75%, transparent);
+  font-weight: 600;
+}
+
+.nimble-prompt-display {
+  padding: 8px 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  animation: nimble-settle 480ms ease-out;
+}
+
+@keyframes nimble-settle {
+  from {
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+  }
+  to {
+    letter-spacing: -0.02em;
+    opacity: 1;
+  }
+}
+
+.nimble-mark {
+  background: transparent;
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+  cursor: help;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.nimble-mark-contested {
+  box-shadow: inset 0 -2px 0 #f85149;
+}
+
+.nimble-mark-challengeable {
+  box-shadow: inset 0 -2px 0 #d29922;
+}
+
+.nimble-mark:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.nimble-mark-legend,
+.nimble-reject,
+.nimble-error {
+  margin: 14px 0 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.nimble-reject {
+  color: #f85149;
+}
+
+.nimble-orbit {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 280px;
+  pointer-events: none;
+}
+
+.nimble-orbit .nimble-chip {
+  pointer-events: auto;
+}
+
+.nimble-orbit-top {
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  justify-content: center;
+  max-width: min(720px, 90%);
+}
+
+.nimble-orbit-left {
+  left: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.nimble-orbit-right {
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.nimble-chip {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 4px 8px;
+  border-radius: 2px;
+  cursor: default;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    transform 180ms ease,
+    background 140ms ease;
+}
+
+.nimble-chip:hover,
+.nimble-chip.active,
+.nimble-chip:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--panel-alt);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.nimble-chip.kind-phase {
+  color: var(--accent);
+  animation: nimble-pulse 1.4s ease-in-out infinite;
+}
+
+.nimble-chip.kind-mode {
+  text-transform: lowercase;
+}
+
+.nimble-chip.kind-find {
+  border-style: dashed;
+}
+
+.nimble-chip.kind-answer {
+  color: #3fb950;
+  border-color: color-mix(in srgb, #3fb950 45%, var(--border));
+}
+
+@keyframes nimble-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.nimble-expand {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 100px;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 48px));
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  animation: nimble-expand-in 160ms ease-out;
+  text-align: left;
+}
+
+@keyframes nimble-expand-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.nimble-expand-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.nimble-expand-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.nimble-expand-drill {
+  margin-top: 10px;
+}
+
+.nimble-viz {
+  position: absolute;
+  z-index: 4;
+  right: 36px;
+  bottom: 88px;
+  width: 148px;
+  padding: 10px 12px 8px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  animation: nimble-viz-spin-in 500ms ease-out;
+}
+
+@keyframes nimble-viz-spin-in {
+  from {
+    opacity: 0;
+    transform: rotate(-4deg) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0) translateY(0);
+  }
+}
+
+.nimble-viz-dismiss {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.nimble-viz-dismiss:hover {
+  color: var(--text);
+}
+
+.nimble-viz-title {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.nimble-viz-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.nimble-viz-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.nimble-viz-assert {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.nimble-viz-bar {
+  flex: 1;
+  font-size: 10px;
+  text-align: center;
+  padding: 3px 0;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 2px;
+}
+
+.nimble-viz-hint {
+  margin: 8px 0 0;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.nimble-viz-restore {
+  position: absolute;
+  z-index: 4;
+  right: 36px;
+  bottom: 88px;
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.nimble-source-strip {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  padding: 10px 18px 12px;
+  animation: nimble-expand-in 160ms ease-out;
+}
+
+.nimble-source-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.nimble-source-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.nimble-source-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nimble-source-claim {
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.nimble-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.nimble-source-meta a {
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.nimble-dock {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.nimble-dock-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.nimble-dock-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .nimble-stage {
+    padding: 96px 16px 120px;
+  }
+
+  .nimble-orbit-left,
+  .nimble-orbit-right {
+    position: static;
+    transform: none;
+    max-width: none;
+    flex-direction: row;
+    justify-content: center;
+    margin: 0 auto 10px;
+  }
+
+  .nimble-stage {
+    flex-direction: column;
+    justify-content: flex-start;
+    overflow-y: auto;
+  }
+
+  .nimble-frame-ring {
+    display: none;
+  }
+
+  .nimble-orbit-top {
+    position: static;
+    transform: none;
+    margin-bottom: 12px;
+  }
 }
