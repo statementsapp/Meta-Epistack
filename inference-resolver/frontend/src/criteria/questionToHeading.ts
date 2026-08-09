@@ -1,12 +1,52 @@
 /**
  * Turn a single question (or sentence) into a display heading.
  *
- * Examples:
- *   "Where is Los Angeles?" → "Where Los Angeles Is"
- *   "Will the Red Sox make the playoffs?" → "Whether the Red Sox Will Make the Playoffs"
- *   "Is Pluto a planet?" → "Whether Pluto Is a Planet"
- *   "Does the Fed raise rates?" → "Whether the Fed Raises Rates"
+ * This is a deterministic rewrite (not an LLM). The shot list below is the
+ * training/spec corpus for the transformer — edit shots and keep the rules
+ * aligned. Call `assertHeadingShots()` in tests or from a one-off check.
  */
+
+/** Few-shot / golden pairs the heading rewrite must honor. */
+export const HEADING_SHOTS: ReadonlyArray<{ q: string; heading: string }> = [
+  { q: "Where is Los Angeles?", heading: "Where Los Angeles Is" },
+  {
+    q: "Will the Red Sox make the playoffs?",
+    heading: "Whether the Red Sox Will Make the Playoffs",
+  },
+  { q: "Is Pluto a planet?", heading: "Whether Pluto Is a Planet" },
+  {
+    q: "Does the Fed raise rates?",
+    heading: "Whether the Fed Raises Rates",
+  },
+  {
+    q: "When will the Red Sox make the playoffs?",
+    heading: "When the Red Sox Will Make the Playoffs",
+  },
+  {
+    q: "What does DNA code for?",
+    heading: "What DNA Codes for",
+  },
+  {
+    q: "Will China's computing power catch up with the USA's?",
+    heading: "Whether China's Computing Power Will Catch up with the USA's",
+  },
+  {
+    q: "Will Chinese computing power catch up to America's?",
+    heading: "Whether Chinese Computing Power Will Catch up to America's",
+  },
+  {
+    q: "Will China's compute capacity catch up to America's?",
+    heading: "Whether China's Compute Capacity Will Catch up to America's",
+  },
+  {
+    q: "Will AAOI stock perform well?",
+    heading: "Whether AAOI Stock Will Perform Well",
+  },
+  {
+    q: "Can fusion be commercial by 2040?",
+    heading: "Whether Fusion Can Be Commercial by 2040",
+  },
+];
 
 const SMALL = new Set([
   "a",
@@ -30,6 +70,12 @@ const SMALL = new Set([
   "over",
   "with",
   "without",
+  "up",
+  "down",
+  "out",
+  "off",
+  "about",
+  "around",
 ]);
 
 const MODALS = new Set([
@@ -53,6 +99,20 @@ const DET = new Set(["the", "a", "an", "this", "that", "these", "those", "my", "
 
 /** Words that usually start the predicate after a short subject. */
 const PREDICATE_START = new Set([
+  "catch",
+  "catches",
+  "caught",
+  "catching",
+  "perform",
+  "performs",
+  "performed",
+  "performing",
+  "code",
+  "codes",
+  "coded",
+  "coding",
+  "be",
+  "being",
   "make",
   "makes",
   "made",
@@ -267,21 +327,35 @@ const PREDICATE_START = new Set([
 
 function titleWord(w: string): string {
   if (!w) return w;
+  const bare = w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9']+$/g, "");
+  const core = bare.replace(/'s$/i, "").replace(/\./g, "");
+  // Keep existing acronyms (USA, USA's, DNA) — do not promote China → CHINA.
+  if (core.length >= 2 && /^[A-Z]+$/.test(core)) {
+    const lead = w.slice(0, w.indexOf(bare));
+    const trail = w.slice(w.indexOf(bare) + bare.length);
+    const poss = /'s$/i.test(bare) ? "'s" : "";
+    return `${lead}${core}${poss}${trail}`;
+  }
   if (/^[A-Z]{2,}$/.test(w)) return w;
   if (/^[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(w)) return w;
-  // Preserve internal caps like iPhone, but title-case ordinary words
   if (w.length > 1 && /[a-z]/.test(w[0]) && /[A-Z]/.test(w.slice(1))) return w;
   return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
 }
 
 function titlePhrase(s: string): string {
-  return s
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => {
+  const articles = new Set(["a", "an", "the"]);
+  const parts = s.split(/\s+/).filter(Boolean);
+  return parts
+    .map((w, i) => {
       const bare = w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9']+$/g, "");
       const lower = bare.toLowerCase();
-      if (SMALL.has(lower)) {
+      // Articles always muted. Other small words muted except as a lone
+      // content-ish first token of a longer phrase ("Up next" rare; we prefer
+      // muted particles like a trailing "for" / "up").
+      if (
+        articles.has(lower) ||
+        (SMALL.has(lower) && (i > 0 || parts.length === 1))
+      ) {
         const lead = w.slice(0, w.indexOf(bare));
         const trail = w.slice(w.indexOf(bare) + bare.length);
         return `${lead}${lower}${trail}`;
@@ -583,4 +657,15 @@ export function questionToHeading(text: string): string {
 
   // Statement: keep original casing aside from trimming ?
   return cleaned.replace(/\?+$/, "").trim();
+}
+
+export function assertHeadingShots(
+  fn: (q: string) => string = questionToHeading,
+): { ok: boolean; failures: { q: string; want: string; got: string }[] } {
+  const failures: { q: string; want: string; got: string }[] = [];
+  for (const { q, heading } of HEADING_SHOTS) {
+    const got = fn(q);
+    if (got !== heading) failures.push({ q, want: heading, got });
+  }
+  return { ok: failures.length === 0, failures };
 }

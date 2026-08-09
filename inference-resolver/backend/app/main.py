@@ -230,6 +230,8 @@ async def plan_evidence_needs(req: EvidenceNeedRequest) -> EvidenceNeedResult:
         raise HTTPException(400, str(exc)) from exc
     except LLMError as exc:
         raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"Evidence needs failed: {exc}") from exc
 
 
 @app.post("/api/criteria/gather", response_model=GatherResult)
@@ -250,6 +252,8 @@ async def gather_evidence(req: GatherRequest) -> GatherResult:
         raise HTTPException(400, str(exc)) from exc
     except LLMError as exc:
         raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"Gather failed: {exc}") from exc
 
 
 @app.post("/api/criteria/answer", response_model=CriteriaAnswerResult)
@@ -271,6 +275,8 @@ async def answer_criteria(req: CriteriaAnswerRequest) -> CriteriaAnswerResult:
         raise HTTPException(400, str(exc)) from exc
     except LLMError as exc:
         raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"Answer failed: {exc}") from exc
 
 
 @app.post("/api/criteria/patch", response_model=CriteriaPatchResult)

@@ -368,6 +368,21 @@ a.link-btn {
   grid-template-columns: 1fr;
 }
 
+/* Zoom can leave a 1px gutter; paint the page green so it never flashes blue. */
+html:has(.app.view-nimble),
+body:has(.app.view-nimble),
+#root:has(.app.view-nimble) {
+  background: #2e4527;
+  overflow: hidden;
+}
+
+.app.view-nimble {
+  zoom: 1.1;
+  width: calc(100% / 1.1);
+  height: calc(100vh / 1.1);
+  background: #2e4527;
+}
+
 .topbar-toggle {
   margin: 0 0 0 8px;
   align-items: center;
@@ -963,6 +978,7 @@ a.answer-find-chip:hover {
   height: 100%;
   color: var(--nimble-fg);
   background: var(--nimble-bg);
+  position: relative;
 }
 
 .nimble-stage {
@@ -1095,6 +1111,11 @@ a.answer-find-chip:hover {
   border-color: rgba(240, 212, 138, 0.4);
 }
 
+.nimble-glyph-btn.danger {
+  color: var(--nimble-danger, #e8a0a0);
+  border-color: rgba(232, 160, 160, 0.4);
+}
+
 .nimble-glyph-n {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -1187,14 +1208,20 @@ a.answer-find-chip:hover {
   position: absolute;
   left: calc(100% + 8px);
   top: 0;
-  z-index: 30;
-  min-width: 168px;
-  max-width: 240px;
+  z-index: 40;
+  min-width: 176px;
+  max-width: 280px;
   padding: 8px 10px;
-  background: #1c2e18;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  background: #142414;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   color: #ffffff;
+}
+
+.nimble-cost-pop.is-rail-left {
+  position: fixed;
+  left: auto;
+  z-index: 80;
 }
 
 .nimble-cost-pop.is-inline {
@@ -1468,6 +1495,20 @@ a.answer-find-chip:hover {
 
 .nimble-phase-tag {
   color: var(--nimble-leaf);
+}
+
+.nimble-phase-tag.is-pulse {
+  animation: nimble-phase-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes nimble-phase-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .nimble-open-fold {
@@ -1761,10 +1802,25 @@ a.answer-find-chip:hover {
   max-width: 36rem;
   padding: 10px 12px;
   border: 1px solid rgba(198, 217, 171, 0.35);
-  background: rgba(8, 28, 18, 0.92);
+  background: #142414;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.nimble-focus-dock.is-overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 4px;
+  z-index: 70;
+  width: min(36rem, calc(100% - 40px));
+  max-width: min(36rem, calc(100% - 40px));
+  margin-top: 0;
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.55);
+  border-color: rgba(198, 217, 171, 0.5);
 }
 
 .nimble-focus-dock-top {
@@ -1772,6 +1828,7 @@ a.answer-find-chip:hover {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .nimble-focus-dock-k {
@@ -1784,8 +1841,11 @@ a.answer-find-chip:hover {
 .nimble-focus-dock-snip {
   margin: 0;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.72);
-  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .nimble-focus-note {
@@ -1798,6 +1858,11 @@ a.answer-find-chip:hover {
   font: inherit;
   font-size: 14px;
   padding: 8px 10px;
+}
+
+.nimble-focus-note::placeholder {
+  color: rgba(255, 255, 255, 0.32);
+  letter-spacing: 0.02em;
 }
 
 .nimble-focus-note:focus {
@@ -1839,16 +1904,16 @@ a.answer-find-chip:hover {
 
 .nimble-patch-ribbon {
   margin-top: 12px;
-  max-width: 36rem;
+  max-width: min(42rem, 100%);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   padding: 7px 10px;
   border-left: 2px solid var(--nimble-leaf);
-  background: rgba(198, 217, 171, 0.08);
+  background: rgba(20, 36, 20, 0.96);
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .nimble-patch-ribbon.is-stub {
@@ -1861,10 +1926,13 @@ a.answer-find-chip:hover {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  flex: 1;
 }
 
 .nimble-patch-ribbon-line {
-  line-height: 1.35;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .nimble-patch-rev {
@@ -1881,7 +1949,9 @@ a.answer-find-chip:hover {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  max-height: min(40vh, 280px);
+  overflow-y: auto;
 }
 
 .nimble-patch-ops li {
@@ -1890,7 +1960,8 @@ a.answer-find-chip:hover {
   gap: 6px;
   align-items: baseline;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.4;
 }
 
 .nimble-patch-op-k {
@@ -1898,19 +1969,25 @@ a.answer-find-chip:hover {
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .nimble-patch-before {
   text-decoration: line-through;
   opacity: 0.65;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .nimble-patch-arrow {
   opacity: 0.5;
+  flex-shrink: 0;
 }
 
 .nimble-patch-after {
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.92);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .nimble-patch-history {
@@ -1919,6 +1996,50 @@ a.answer-find-chip:hover {
   gap: 8px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.45);
+}
+
+.nimble-revise-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 8px;
+}
+
+.nimble-revise-card {
+  padding: 8px 8px 8px 10px;
+  border-left: 2px solid var(--nimble-leaf);
+  background: rgba(20, 36, 20, 0.55);
+}
+
+.nimble-revise-card.is-stub {
+  border-left-color: rgba(230, 190, 120, 0.75);
+}
+
+.nimble-revise-card.is-latest {
+  background: rgba(20, 36, 20, 0.85);
+}
+
+.nimble-revise-line {
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.88);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  margin-bottom: 6px;
+}
+
+.nimble-patch-ops.is-rail {
+  max-height: none;
+  overflow: visible;
+  gap: 8px;
+}
+
+.nimble-patch-ops.is-rail li {
+  font-size: 11px;
+}
+
+.nimble-fold-glyph.leaf {
+  color: var(--nimble-leaf);
 }
 
 .nimble-focus-source {
@@ -2348,6 +2469,8 @@ a.answer-find-chip:hover {
   padding: 10px 18px;
   border-top: 1px solid var(--nimble-line);
   background: rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 20;
 }
 
 .nimble-dock-hint {

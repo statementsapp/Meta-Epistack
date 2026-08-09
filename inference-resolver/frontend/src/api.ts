@@ -23,19 +23,32 @@ import type {
 
 async function jsonOrThrow(res: Response) {
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail =
-        typeof body.detail === "string"
-          ? body.detail
-          : body.detail
-            ? JSON.stringify(body.detail)
-            : detail;
-    } catch {
-      /* ignore */
+    const raw = await res.text();
+    let detail = res.statusText || `HTTP ${res.status}`;
+    if (raw.trim()) {
+      try {
+        const body = JSON.parse(raw);
+        if (typeof body.detail === "string") {
+          detail = body.detail;
+        } else if (body.detail) {
+          detail = JSON.stringify(body.detail);
+        } else if (typeof body.message === "string") {
+          detail = body.message;
+        } else {
+          detail = raw.trim().slice(0, 400);
+        }
+      } catch {
+        detail = raw.trim().slice(0, 400);
+      }
     }
-    throw new Error(detail || `HTTP ${res.status}`);
+    const path = (() => {
+      try {
+        return new URL(res.url).pathname;
+      } catch {
+        return res.url || "request";
+      }
+    })();
+    throw new Error(`${detail} (${res.status} ${path})`);
   }
   return res.json();
 }

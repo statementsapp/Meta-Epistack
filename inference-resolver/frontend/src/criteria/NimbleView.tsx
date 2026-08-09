@@ -33,48 +33,6 @@ type FlowPhase = "idle" | "design" | "audit" | "needs" | "gather" | "answer";
 
 type AtomFocus = PatchFocus & { label: string };
 
-function focusActionChips(
-  kind: PatchFocusKind | "selection",
-): { action: "critique" | "probe"; label: string }[] {
-  switch (kind) {
-    case "claim":
-      return [
-        { action: "critique", label: "Distrust source" },
-        { action: "probe", label: "Corroborate" },
-      ];
-    case "figure":
-      return [
-        { action: "critique", label: "Misread" },
-        { action: "probe", label: "As-of / denom" },
-      ];
-    case "check":
-      return [
-        { action: "critique", label: "Too weak" },
-        { action: "probe", label: "Fetch now" },
-      ];
-    case "defeater":
-      return [
-        { action: "critique", label: "Dismiss" },
-        { action: "probe", label: "Hunt now" },
-      ];
-    case "schema":
-      return [
-        { action: "critique", label: "Wrong frame" },
-        { action: "probe", label: "Missing class" },
-      ];
-    case "risk":
-      return [
-        { action: "critique", label: "Challenge" },
-        { action: "probe", label: "Settle" },
-      ];
-    default:
-      return [
-        { action: "critique", label: "Critique" },
-        { action: "probe", label: "Probe" },
-      ];
-  }
-}
-
 /** First sentence/question only — Nimble takes input one unit at a time. */
 function firstUnit(raw: string): string {
   const t = raw.replace(/\s+/g, " ").trim();
@@ -323,6 +281,10 @@ export function NimbleView() {
   const costTimer = useRef<number | null>(null);
   const patchFlashTimer = useRef<number | null>(null);
   const focusNoteRef = useRef<HTMLInputElement>(null);
+  const costWrapRef = useRef<HTMLDivElement>(null);
+  const [costBox, setCostBox] = useState<{ top: number; right: number } | null>(
+    null,
+  );
 
   const generationRef = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -605,8 +567,8 @@ export function NimbleView() {
         },
       ]);
       setFocusNote("");
-      if (action === "probe") setRightExpanded(true);
-      if (action === "critique") setLeftExpanded(true);
+      clearAtomFocus();
+      setRightExpanded(true);
       addMeter("patch", result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -658,11 +620,28 @@ export function NimbleView() {
   };
   const openCost = () => {
     if (costTimer.current) window.clearTimeout(costTimer.current);
+    // Keep the left rail closed so $ does not fight the expanded menu.
+    if (leftRailTimer.current) window.clearTimeout(leftRailTimer.current);
+    setLeftHover(false);
+    setLeftExpanded(false);
+    const el = costWrapRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setCostBox({
+        top: r.top,
+        right: Math.max(8, window.innerWidth - r.left + 8),
+      });
+    }
     setCostHover(true);
   };
-  const scheduleCloseCost = () => {
+  const closeCost = () => {
     if (costTimer.current) window.clearTimeout(costTimer.current);
-    costTimer.current = window.setTimeout(() => setCostHover(false), 140);
+    setCostHover(false);
+    setCostBox(null);
+  };
+  const toggleCost = () => {
+    if (costHover) closeCost();
+    else openCost();
   };
 
   const activateToken = (token: string, pin = false) => {
@@ -716,13 +695,17 @@ export function NimbleView() {
         clearAtomFocus();
         return;
       }
+      if (costHover) {
+        closeCost();
+        return;
+      }
       setDrilledFind(null);
       setTip(null);
       clearFocus();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [atomFocus]);
+  }, [atomFocus, costHover]);
 
   const resetFlow = () => {
     generationRef.current += 1;
@@ -915,30 +898,6 @@ export function NimbleView() {
     .filter(Boolean)
     .join(" ");
 
-  const focusPlaceholder = (() => {
-    if (!atomFocus) return "";
-    switch (atomFocus.kind) {
-      case "verdict":
-      case "assertion":
-      case "summary":
-        return "What would defeat this? Or note a probe…";
-      case "claim":
-        return "Why distrust / what to corroborate?";
-      case "figure":
-        return "Misread quantity? Need as-of date?";
-      case "check":
-        return "Too weak? Fetch the observation?";
-      case "defeater":
-        return "Dismiss, strengthen, or hunt now?";
-      case "risk":
-        return "Still open — challenge or probe?";
-      case "schema":
-        return "Wrong partition / missing class?";
-      default:
-        return "Optional note…";
-    }
-  })();
-
   const railsCompact = !!answer;
   const leftOpen = leftExpanded || leftHover;
   const rightOpen = rightExpanded || rightHover;
@@ -1007,6 +966,7 @@ export function NimbleView() {
         className={stageClass}
         onClick={() => {
           if (atomFocus) clearAtomFocus();
+          if (costHover) closeCost();
         }}
       >
         {running && (
@@ -1032,11 +992,15 @@ export function NimbleView() {
             className={`nimble-rail nimble-rail-left${
               criteria || needsPlan || answer ? " in" : ""
             }${leftCompact ? " is-compact" : ""}${leftOpen && railsCompact ? " is-expanded" : ""}${!answer ? " is-loading-rail" : ""}${(focusKind && ["check", "defeater", "risk"].includes(focusKind)) || (atomFocus && ["check", "defeater", "risk"].includes(atomFocus.kind)) ? " has-focus" : ""}`}
-            onMouseEnter={() => {
-              if (railsCompact) openLeftRail();
+            onMouseEnter={(e) => {
+              if (!railsCompact || costHover) return;
+              // mouseenter.target is the aside itself — hit-test the pointer.
+              const hit = document.elementFromPoint(e.clientX, e.clientY);
+              if (hit?.closest(".nimble-cost-wrap")) return;
+              openLeftRail();
             }}
             onMouseLeave={() => {
-              if (railsCompact) scheduleCloseLeftRail();
+              if (railsCompact && !costHover) scheduleCloseLeftRail();
             }}
           >
             {leftCompact ? (
@@ -1078,18 +1042,28 @@ export function NimbleView() {
                     <span className="nimble-glyph-n">{settlementNeeds.length}</span>
                   </button>
                 )}
-                {(defeaterNeeds.length > 0 || defeaters.length > 0) && (
+                {defeaterNeeds.length > 0 && (
                   <button
                     type="button"
                     className={`nimble-glyph-btn warn${focusKind === "defeater" ? " is-focus" : ""}`}
-                    title={`defeaters · ${defeaterNeeds.length || defeaters.length}`}
+                    title={`hunts · ${defeaterNeeds.length}`}
                     onMouseEnter={openLeftRail}
                     onClick={() => setLeftExpanded((v) => !v)}
                   >
                     <span aria-hidden>▿</span>
-                    <span className="nimble-glyph-n">
-                      {defeaterNeeds.length || defeaters.length}
-                    </span>
+                    <span className="nimble-glyph-n">{defeaterNeeds.length}</span>
+                  </button>
+                )}
+                {defeaters.length > 0 && (
+                  <button
+                    type="button"
+                    className={`nimble-glyph-btn danger${atomFocus?.kind === "defeater" && atomFocus.id.startsWith("defeater:") ? " is-focus" : ""}`}
+                    title={`defeaters · ${defeaters.length}`}
+                    onMouseEnter={openLeftRail}
+                    onClick={() => setLeftExpanded((v) => !v)}
+                  >
+                    <span aria-hidden>✕</span>
+                    <span className="nimble-glyph-n">{defeaters.length}</span>
                   </button>
                 )}
                 {(answer?.answer?.residual_uncertainty?.length ?? 0) > 0 && (
@@ -1108,14 +1082,17 @@ export function NimbleView() {
                 )}
                 {(runMeter.calls > 0 || running) && (
                   <div
+                    ref={costWrapRef}
                     className="nimble-cost-wrap"
-                    onMouseEnter={openCost}
-                    onMouseLeave={scheduleCloseCost}
                   >
                     <button
                       type="button"
                       className={`nimble-glyph-btn cost${costHover ? " is-focus" : ""}`}
                       title="run cost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCost();
+                      }}
                     >
                       <span aria-hidden>$</span>
                       <span className="nimble-glyph-n">
@@ -1123,7 +1100,15 @@ export function NimbleView() {
                       </span>
                     </button>
                     {costHover && (
-                      <div className="nimble-cost-pop">
+                      <div
+                        className="nimble-cost-pop is-rail-left"
+                        style={
+                          costBox
+                            ? { top: costBox.top, right: costBox.right }
+                            : undefined
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <div className="nimble-cost-k">run</div>
                         <div className="nimble-cost-row">
                           <span>tokens</span>
@@ -1165,6 +1150,9 @@ export function NimbleView() {
                     setLeftExpanded(false);
                     setLeftHover(false);
                     setLeftSession((s) => s + 1);
+                    if (costTimer.current) window.clearTimeout(costTimer.current);
+                    setCostHover(false);
+                    setCostBox(null);
                   }}
                   title="Collapse"
                 >
@@ -1271,7 +1259,7 @@ export function NimbleView() {
                     <span className="nimble-fold-glyph warn" aria-hidden>
                       ▿
                     </span>
-                    <span className="nimble-fold-k">defeaters</span>
+                    <span className="nimble-fold-k">hunts</span>
                     <span className="nimble-fold-n">{defeaterNeeds.length}</span>
                   </summary>
                   <ul className="nimble-fold-list">
@@ -1296,7 +1284,7 @@ export function NimbleView() {
                               kind: "defeater",
                               id,
                               text: n.statement,
-                              label: "defeater",
+                              label: "hunt",
                             });
                           }}
                           {...soft(key, n.statement, 56)}
@@ -1438,17 +1426,29 @@ export function NimbleView() {
               )}
 
               {(runMeter.calls > 0 || running) && !railsCompact && (
-                <div
-                  className="nimble-cost-inline"
-                  onMouseEnter={openCost}
-                  onMouseLeave={scheduleCloseCost}
-                >
-                  <button type="button" className="nimble-glyph-btn cost">
+                <div ref={costWrapRef} className="nimble-cost-inline">
+                  <button
+                    type="button"
+                    className={`nimble-glyph-btn cost${costHover ? " is-focus" : ""}`}
+                    title="run cost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCost();
+                    }}
+                  >
                     <span aria-hidden>$</span>
                     <span className="nimble-glyph-n">{runMeter.calls || "·"}</span>
                   </button>
                   {costHover && (
-                    <div className="nimble-cost-pop is-inline">
+                    <div
+                      className="nimble-cost-pop is-rail-left"
+                      style={
+                        costBox
+                          ? { top: costBox.top, right: costBox.right }
+                          : undefined
+                      }
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="nimble-cost-k">run</div>
                       <div className="nimble-cost-row">
                         <span>tokens</span>
@@ -1538,7 +1538,13 @@ export function NimbleView() {
                       </span>
                     )}
                     {phaseText && (
-                      <span className="nimble-above-tag nimble-phase-tag">
+                      <span
+                        className={`nimble-above-tag nimble-phase-tag${
+                          phase === "gather" || phase === "answer"
+                            ? " is-pulse"
+                            : ""
+                        }`}
+                      >
                         {phaseText}
                       </span>
                     )}
@@ -1735,147 +1741,6 @@ export function NimbleView() {
                 </div>
               )}
 
-              {patchRibbon && (
-                <div
-                  className={`nimble-patch-ribbon${patchRibbon.stub ? " is-stub" : ""}`}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="nimble-patch-ribbon-main">
-                    <div className="nimble-patch-ribbon-line">
-                      <span className="nimble-patch-rev">
-                        r{patchRibbon.revision}
-                      </span>
-                      {patchRibbon.action}: {patchRibbon.line}
-                      {patchRibbon.stub ? " · stub" : ""}
-                    </div>
-                    {patchRibbon.ops.length > 0 && (
-                      <ul className="nimble-patch-ops">
-                        {patchRibbon.ops.slice(0, 6).map((op, i) => (
-                          <li key={`${op.op}-${op.target_id}-${i}`}>
-                            <span className="nimble-patch-op-k">{op.op}</span>
-                            {op.before ? (
-                              <span className="nimble-patch-before">
-                                {op.before.slice(0, 72)}
-                                {op.before.length > 72 ? "…" : ""}
-                              </span>
-                            ) : null}
-                            {op.before && op.after ? (
-                              <span className="nimble-patch-arrow">→</span>
-                            ) : null}
-                            {op.after ? (
-                              <span className="nimble-patch-after">
-                                {op.after.slice(0, 72)}
-                                {op.after.length > 72 ? "…" : ""}
-                              </span>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {revisionLog.length > 1 && (
-                      <div className="nimble-patch-history">
-                        {revisionLog
-                          .slice(-4)
-                          .map((r) => (
-                            <span key={r.revision} title={r.line}>
-                              r{r.revision}
-                              {r.stub ? "*" : ""}
-                            </span>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className="nimble-lens-clear"
-                    onClick={() => setPatchRibbon(null)}
-                    title="Dismiss"
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-
-              {atomFocus && answer && (
-                <div
-                  className="nimble-focus-dock"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="nimble-focus-dock-top">
-                    <span className="nimble-focus-dock-k">{atomFocus.label}</span>
-                    <button
-                      type="button"
-                      className="nimble-lens-clear"
-                      onClick={clearAtomFocus}
-                      title="Clear focus (Esc)"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <p className="nimble-focus-dock-snip">
-                    {atomFocus.text.slice(0, 160)}
-                    {atomFocus.text.length > 160 ? "…" : ""}
-                  </p>
-                  {atomFocus.kind === "claim" &&
-                    (() => {
-                      const fid = atomFocus.id.replace(/^claim:/, "");
-                      const find =
-                        gather?.finds.find((f) => f.id === fid) ?? null;
-                      if (!find?.source_url && !find?.source_title) return null;
-                      return find.source_url ? (
-                        <a
-                          className="nimble-focus-source"
-                          href={find.source_url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {find.source_title || find.source_url}
-                        </a>
-                      ) : (
-                        <div className="nimble-focus-source is-plain">
-                          {find.source_title}
-                        </div>
-                      );
-                    })()}
-                  <input
-                    ref={focusNoteRef}
-                    className="nimble-focus-note"
-                    value={focusNote}
-                    disabled={patching}
-                    placeholder={focusPlaceholder}
-                    onChange={(e) => setFocusNote(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        void applyAtomPatch("critique");
-                      }
-                    }}
-                  />
-                  <div className="nimble-focus-chips">
-                    {focusActionChips(
-                      atomFocus.id === "selection"
-                        ? "selection"
-                        : atomFocus.kind,
-                    ).map((chip) => (
-                      <button
-                        key={chip.action}
-                        type="button"
-                        className="nimble-focus-chip"
-                        disabled={patching}
-                        onClick={() => void applyAtomPatch(chip.action)}
-                      >
-                        {chip.label}
-                      </button>
-                    ))}
-                    {patching && (
-                      <span className="nimble-italic nimble-focus-wait">
-                        patching…
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
               {lens && (
                 <div
                   className={`nimble-lens${lens.pinned ? " is-pinned" : ""}`}
@@ -2043,7 +1908,7 @@ export function NimbleView() {
         {committed != null && (
           <aside
             className={`nimble-rail nimble-rail-right${
-              gather || running ? " in" : ""
+              gather || running || revisionLog.length > 0 ? " in" : ""
             }${rightCompact ? " is-compact" : ""}${rightOpen && railsCompact ? " is-expanded" : ""}${focusKind === "claim" || atomFocus?.kind === "claim" ? " has-focus" : ""}`}
             onMouseEnter={() => {
               if (railsCompact) openRightRail();
@@ -2064,6 +1929,18 @@ export function NimbleView() {
                   <span aria-hidden>«</span>
                   <span className="nimble-glyph-n">{allFinds.length || "·"}</span>
                 </button>
+                {revisionLog.length > 0 && (
+                  <button
+                    type="button"
+                    className="nimble-glyph-btn leaf"
+                    title={`revises · ${revisionLog.length}`}
+                    onMouseEnter={openRightRail}
+                    onClick={() => setRightExpanded((v) => !v)}
+                  >
+                    <span aria-hidden>↻</span>
+                    <span className="nimble-glyph-n">{revisionLog.length}</span>
+                  </button>
+                )}
               </div>
             ) : (
             <div className="nimble-rail-scroll">
@@ -2148,6 +2025,58 @@ export function NimbleView() {
                   )}
                 </div>
               </details>
+
+              {revisionLog.length > 0 && (
+                <details
+                  className="nimble-fold"
+                  key={`revises-${rightSession}`}
+                  open
+                >
+                  <summary className="nimble-fold-sum">
+                    <span className="nimble-fold-glyph leaf" aria-hidden>
+                      ↻
+                    </span>
+                    <span className="nimble-fold-k">revises</span>
+                    <span className="nimble-fold-n">{revisionLog.length}</span>
+                  </summary>
+                  <div className="nimble-revise-list">
+                    {[...revisionLog].reverse().map((r) => (
+                      <article
+                        key={r.revision}
+                        className={`nimble-revise-card${r.stub ? " is-stub" : ""}${
+                          patchRibbon?.revision === r.revision ? " is-latest" : ""
+                        }`}
+                      >
+                        <div className="nimble-revise-line">
+                          <span className="nimble-patch-rev">r{r.revision}</span>
+                          {r.line}
+                          {r.stub ? " · stub" : ""}
+                        </div>
+                        {r.ops.length > 0 && (
+                          <ul className="nimble-patch-ops is-rail">
+                            {r.ops.map((op, i) => (
+                              <li key={`${r.revision}-${op.op}-${op.target_id}-${i}`}>
+                                <span className="nimble-patch-op-k">{op.op}</span>
+                                {op.before ? (
+                                  <span className="nimble-patch-before">
+                                    {op.before}
+                                  </span>
+                                ) : null}
+                                {op.before && op.after ? (
+                                  <span className="nimble-patch-arrow">→</span>
+                                ) : null}
+                                {op.after ? (
+                                  <span className="nimble-patch-after">{op.after}</span>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
             )}
           </aside>
@@ -2221,6 +2150,63 @@ export function NimbleView() {
         </div>
       )}
 
+      {atomFocus && answer && (
+        <div
+          className="nimble-focus-dock is-overlay"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="nimble-focus-dock-top">
+            <span className="nimble-focus-dock-k">{atomFocus.label}</span>
+            <button
+              type="button"
+              className="nimble-lens-clear"
+              onClick={clearAtomFocus}
+              title="Clear focus (Esc)"
+            >
+              ×
+            </button>
+          </div>
+          <p className="nimble-focus-dock-snip">{atomFocus.text}</p>
+          {atomFocus.kind === "claim" &&
+            (() => {
+              const fid = atomFocus.id.replace(/^claim:/, "");
+              const find = gather?.finds.find((f) => f.id === fid) ?? null;
+              if (!find?.source_url && !find?.source_title) return null;
+              return find.source_url ? (
+                <a
+                  className="nimble-focus-source"
+                  href={find.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {find.source_title || find.source_url}
+                </a>
+              ) : (
+                <div className="nimble-focus-source is-plain">
+                  {find.source_title}
+                </div>
+              );
+            })()}
+          <input
+            ref={focusNoteRef}
+            className="nimble-focus-note"
+            value={focusNote}
+            disabled={patching}
+            placeholder="note"
+            onChange={(e) => setFocusNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void applyAtomPatch("critique");
+              }
+            }}
+          />
+          {patching && (
+            <span className="nimble-italic nimble-focus-wait">working…</span>
+          )}
+        </div>
+      )}
+
       <div className="nimble-dock">
         <span className="nimble-dock-hint">Enter run · Shift+Enter line</span>
         <div className="nimble-dock-actions">
@@ -2281,14 +2267,14 @@ function valueKey(value: string, kind: string): string {
 function labelScore(label: string): number {
   const t = label.trim();
   if (!t) return 0;
+  if (isBrokenFigureLabel(t) || isWeakFigureLabel(t)) return 0;
   if (/^(chance|range|percent|record|wins|place|division|alt\b)/i.test(t)) {
     return 1;
   }
-  if (isWeakFigureLabel(t)) return 0;
   let score = Math.min(t.length, 36);
   if (/\b(20\d{2})\b/.test(t)) score += 4;
   if (
-    /\b(vote|odds|share|poll|record|leader|chance|risk|ruin|parity|capacity|compute|yield|production|stock)\b/i.test(
+    /\b(vote|odds|share|poll|record|leader|chance|risk|ruin|parity|capacity|compute|yield|production|stock|growth|revenue|YoY)\b/i.test(
       t,
     )
   ) {
@@ -2298,9 +2284,34 @@ function labelScore(label: string): number {
 }
 
 function isWeakFigureLabel(label: string): boolean {
-  return /^(reached?|reaching|shows?|shown|unlikely|likely|remains?|leaving|versus|with|from|into|under|given|about|that|this|have|has|had|been|were|was|are|is|to|of|in|on|at|by|for|as|and|or|the|a|an)$/i.test(
+  return /^(reached?|reaching|shows?|shown|unlikely|likely|remains?|leaving|versus|with|from|into|under|given|about|that|this|have|has|had|been|were|was|are|is|to|of|in|on|at|by|for|as|and|or|the|a|an|far|exceeding|exceeds|above|over|below)$/i.test(
     label.trim(),
   );
+}
+
+/** Reject mid-paren scraps like "~9B end-2025) far exceeding". */
+function isBrokenFigureLabel(label: string): boolean {
+  const t = label.trim();
+  if (!t) return true;
+  if (/[~()]/.test(t)) return true;
+  if (/^\W/.test(t)) return true;
+  if (
+    /^(far|exceeding|exceeds|above|over|under|below|from|vs\.?|versus)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Drop parenthetical asides so labels aren't cut from "(…)" guts. */
+function stripParens(s: string): string {
+  return s
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\[[^\]]*]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Pull a short distinctive label from text around a numeric match. */
@@ -2309,8 +2320,9 @@ function labelNear(
   after: string,
   fallback: string,
 ): string {
-  const b = before.replace(/\s+/g, " ").trim();
+  const bRaw = before.replace(/\s+/g, " ").trim();
   const a = after.replace(/\s+/g, " ").trim();
+  const b = stripParens(bRaw);
 
   // "41% of global AI chip deployment" / "41 percent share of …"
   const ofAfter = a.match(
@@ -2318,28 +2330,61 @@ function labelNear(
   );
   if (ofAfter?.[1]) {
     const cand = trimLabel(ofAfter[1].replace(/[,.;:].*$/, "").trim(), 48);
-    if (cand && !isWeakFigureLabel(cand)) return cand;
+    if (cand && !isWeakFigureLabel(cand) && !isBrokenFigureLabel(cand)) {
+      return cand;
+    }
+  }
+
+  // "multi-fold growth far exceeding 25%" / "revenue above 12%"
+  const thr = b.match(
+    /((?:multi[- ]?fold\s+)?(?:growth|revenue|sales|return|margin|gain|increase|profit)s?(?:\s+rate)?)\s+(?:far\s+)?(?:exceeding|exceeds|above|over|under|below|vs\.?|versus)\s*$/i,
+  );
+  if (thr?.[1]) {
+    let cand = thr[1].trim();
+    const yoy = a.match(/^\s*((?:YoY|year[- ]over[- ]year)(?:\s+\w+){0,2})/i);
+    if (yoy?.[1]) cand = `${cand} ${yoy[1]}`.trim();
+    cand = trimLabel(cand, 48);
+    if (cand && !isWeakFigureLabel(cand) && !isBrokenFigureLabel(cand)) {
+      return cand;
+    }
+  }
+
+  // Bare "exceeding 25% YoY" — use after as the anchor when before is gluey.
+  if (
+    /(?:far\s+)?(?:exceeding|exceeds|above|over|under|below)\s*$/i.test(b)
+  ) {
+    const yoy = a.match(
+      /^\s*((?:YoY|year[- ]over[- ]year)(?:\s+(?:growth|gain|increase))?)/i,
+    );
+    if (yoy?.[1]) {
+      const cand = trimLabel(yoy[1].trim(), 32);
+      if (cand && !isBrokenFigureLabel(cand)) return cand;
+    }
   }
 
   // "share of X … at 41%" / "parity by 2030 at 41%"
   const shareBefore = b.match(
-    /((?:share|portion|odds|chance|probability|capacity|parity|stock|yield|production)(?:\s+(?:of|in|for)\s+[^,.;:]{2,36})?)\s*(?:at|to|near|around|≈|~)?\s*$/i,
+    /((?:share|portion|odds|chance|probability|capacity|parity|stock|yield|production|growth|revenue)(?:\s+(?:of|in|for)\s+[^,.;:]{2,36})?)\s*(?:at|to|near|around|≈|~)?\s*$/i,
   );
   if (shareBefore?.[1]) {
     const cand = trimLabel(shareBefore[1].trim(), 48);
-    if (cand && !isWeakFigureLabel(cand)) return cand;
+    if (cand && !isWeakFigureLabel(cand) && !isBrokenFigureLabel(cand)) {
+      return cand;
+    }
   }
 
   const ofThat =
     b.match(
-      /(?:chance|probability|odds|likelihood|rate|share|margin|vote|capacity|parity)\s+(?:of|that|for|as)?\s*(.{3,42})$/i,
+      /(?:chance|probability|odds|likelihood|rate|share|margin|vote|capacity|parity|growth)\s+(?:of|that|for|as)?\s*(.{3,42})$/i,
     ) ||
     a.match(
       /^(?:chance|probability|odds|likelihood|share)\s+(?:of|that|for)\s+(.{3,42})/i,
     );
   if (ofThat?.[1]) {
     const cand = trimLabel(ofThat[1].replace(/[,.;:].*$/, "").trim(), 44);
-    if (cand && !isWeakFigureLabel(cand)) return cand;
+    if (cand && !isWeakFigureLabel(cand) && !isBrokenFigureLabel(cand)) {
+      return cand;
+    }
   }
 
   const byYear = `${b} ${a}`.match(
@@ -2352,13 +2397,13 @@ function labelNear(
     .split(/\s+/)
     .filter(
       (w) =>
-        !/^(a|an|the|of|to|in|on|at|vs|is|are|and|or|with|under|about|was|were|has|had|been|reach|reached|reaching|unlikely|likely)$/i.test(
+        !/^(a|an|the|of|to|in|on|at|vs|is|are|and|or|with|under|about|was|were|has|had|been|reach|reached|reaching|unlikely|likely|far|exceeding|exceeds|above|over|below|reflecting|approximately)$/i.test(
           w,
         ),
     )
     .slice(-4)
     .join(" ");
-  if (topic && topic.length >= 3 && !isWeakFigureLabel(topic)) {
+  if (topic && topic.length >= 3 && !isWeakFigureLabel(topic) && !isBrokenFigureLabel(topic)) {
     const yearBit = byYear
       ? byYear[1] || `${byYear[2]}–${byYear[3]}`
       : "";
@@ -2368,6 +2413,20 @@ function labelNear(
     );
   }
   if (byYear) return byYear[1] || `${byYear[2]}–${byYear[3]}`;
+
+  // Last resort: short after-context (e.g. "YoY") if clean.
+  const afterBit = a
+    .replace(/^[%\s.,;:—-]+/, "")
+    .replace(/[,.;:].*$/, "")
+    .trim();
+  if (
+    afterBit.length >= 2 &&
+    afterBit.length <= 24 &&
+    !isWeakFigureLabel(afterBit) &&
+    !isBrokenFigureLabel(afterBit)
+  ) {
+    return afterBit;
+  }
   return fallback;
 }
 
@@ -2388,7 +2447,7 @@ function collectFromText(text: string, weightBoost: number): FigureCand[] {
   };
 
   for (const m of text.matchAll(
-    /(.{0,48}?)(\d{1,3}(?:\.\d+)?)\s*[-–]\s*(\d{1,3}(?:\.\d+)?)\s*(?:%|percent)\b(.{0,36})/gi,
+    /(.{0,72}?)(\d{1,3}(?:\.\d+)?)\s*[-–]\s*(\d{1,3}(?:\.\d+)?)\s*(?:%|percent)\b(.{0,36})/gi,
   )) {
     const label = labelNear(m[1], m[4], "range");
     const value = `${m[2]}–${m[3]}%`;
@@ -2396,7 +2455,7 @@ function collectFromText(text: string, weightBoost: number): FigureCand[] {
   }
 
   for (const m of text.matchAll(
-    /(.{0,48}?)(\d{1,3}(?:\.\d+)?)\s*(?:%|percent)\b(.{0,36})/gi,
+    /(.{0,72}?)(\d{1,3}(?:\.\d+)?)\s*(?:%|percent)\b(.{0,36})/gi,
   )) {
     const value = `${m[2]}%`;
     if (
@@ -2410,7 +2469,18 @@ function collectFromText(text: string, weightBoost: number): FigureCand[] {
       continue;
     }
     const label = labelNear(m[1], m[3], "chance");
-    add(value, label, "chance", `${value} · ${label}`, 2);
+    // Threshold comparisons ("exceeding 25%") are weak hero figures.
+    const isThreshold =
+      /(?:far\s+)?(?:exceeding|exceeds|above|over|under|below|vs\.?|versus)\s*$/i.test(
+        stripParens(m[1].replace(/\s+/g, " ")),
+      );
+    add(
+      value,
+      label,
+      "chance",
+      `${value} · ${label}`,
+      isThreshold ? 0.5 : 2,
+    );
   }
 
   const sportsContext =
@@ -2503,9 +2573,10 @@ function extractFigures(parts: {
     const alts = labels
       .filter((l) => l.toLowerCase() !== fig.label.toLowerCase())
       .filter((l) => labelScore(l) > 1);
-    const bestLabel = isWeakFigureLabel(fig.label)
-      ? alts[0] || fig.label
-      : fig.label;
+    const bestLabel =
+      isWeakFigureLabel(fig.label) || isBrokenFigureLabel(fig.label)
+        ? alts[0] || fig.label
+        : fig.label;
     const tipParts = [
       `${fig.value} — ${bestLabel}`,
       ...alts.filter((l) => l.toLowerCase() !== bestLabel.toLowerCase()).slice(0, 3),
