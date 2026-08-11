@@ -46,6 +46,10 @@ export const HEADING_SHOTS: ReadonlyArray<{ q: string; heading: string }> = [
     q: "Can fusion be commercial by 2040?",
     heading: "Whether Fusion Can Be Commercial by 2040",
   },
+  {
+    q: "When will global oil prices stabilize?",
+    heading: "When Global Oil Prices Will Stabilize",
+  },
 ];
 
 const SMALL = new Set([

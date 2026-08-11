@@ -28,10 +28,32 @@ import {
   resolveSpans,
   type LensTarget,
 } from "./summaryLens";
+import { useSpeechDraft } from "./useSpeechDraft";
 
 type FlowPhase = "idle" | "design" | "audit" | "needs" | "gather" | "answer";
 
 type AtomFocus = PatchFocus & { label: string };
+
+function MicIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v4" />
+      <path d="M8 22h8" />
+    </svg>
+  );
+}
 
 /** First sentence/question only — Nimble takes input one unit at a time. */
 function firstUnit(raw: string): string {
@@ -285,9 +307,29 @@ export function NimbleView() {
   const [costBox, setCostBox] = useState<{ top: number; right: number } | null>(
     null,
   );
+  const [promptVoiceDraft, setPromptVoiceDraft] = useState(false);
 
   const generationRef = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const promptSpeech = useSpeechDraft({
+    onDraft: (text) => {
+      setPromptVoiceDraft(true);
+      setDraft(text);
+    },
+    onFinal: () => {
+      queueMicrotask(() => inputRef.current?.focus());
+    },
+  });
+
+  const focusSpeech = useSpeechDraft({
+    onDraft: (text) => {
+      setFocusNote(text);
+    },
+    onFinal: () => {
+      queueMicrotask(() => focusNoteRef.current?.focus());
+    },
+  });
 
   const criteria = design?.bouncer.admitted ? design.criteria : null;
   const heading = committed ? toHeading(committed) : "";
@@ -486,9 +528,35 @@ export function NimbleView() {
   };
 
   const clearAtomFocus = () => {
+    focusSpeech.discard();
     setAtomFocus(null);
     setFocusNote("");
     setPatching(false);
+  };
+
+  const togglePromptMic = () => {
+    if (promptSpeech.listening) {
+      promptSpeech.stop();
+      return;
+    }
+    focusSpeech.discard();
+    promptSpeech.start();
+  };
+
+  const toggleFocusMic = () => {
+    if (focusSpeech.listening) {
+      focusSpeech.stop();
+      return;
+    }
+    promptSpeech.discard();
+    focusSpeech.start();
+  };
+
+  const discardPromptDraft = () => {
+    promptSpeech.discard();
+    setDraft("");
+    setPromptVoiceDraft(false);
+    queueMicrotask(() => inputRef.current?.focus());
   };
 
   const enterAtomFocus = (next: AtomFocus) => {
@@ -695,6 +763,10 @@ export function NimbleView() {
         clearAtomFocus();
         return;
       }
+      if (promptSpeech.listening || (committed == null && promptVoiceDraft)) {
+        discardPromptDraft();
+        return;
+      }
       if (costHover) {
         closeCost();
         return;
@@ -705,7 +777,13 @@ export function NimbleView() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [atomFocus, costHover]);
+  }, [
+    atomFocus,
+    costHover,
+    promptSpeech.listening,
+    committed,
+    promptVoiceDraft,
+  ]);
 
   const resetFlow = () => {
     generationRef.current += 1;
@@ -732,6 +810,8 @@ export function NimbleView() {
   };
 
   const onEdit = () => {
+    promptSpeech.discard();
+    setPromptVoiceDraft(false);
     resetFlow();
     setCommitted(null);
     queueMicrotask(() => inputRef.current?.focus());
@@ -742,6 +822,8 @@ export function NimbleView() {
     if (!prompt || running) return;
 
     const gen = ++generationRef.current;
+    promptSpeech.discard();
+    setPromptVoiceDraft(false);
     setCommitted(prompt);
     setDraft(prompt);
     setRunning(true);
@@ -1501,27 +1583,57 @@ export function NimbleView() {
         >
           {committed == null ? (
             <>
-              <textarea
-                ref={inputRef}
-                className="nimble-prompt-input"
-                value={draft}
-                rows={1}
-                spellCheck
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder=""
-                aria-label="Question or claim"
-                autoComplete="off"
-                autoFocus
-                style={{
-                  fontSize: `calc(clamp(18px, 2.6vw, 28px) * ${inputScale})`,
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void onRun();
-                  }
-                }}
-              />
+              <div className="nimble-prompt-row">
+                <textarea
+                  ref={inputRef}
+                  className="nimble-prompt-input"
+                  value={draft}
+                  rows={1}
+                  spellCheck
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder=""
+                  aria-label="Question or claim"
+                  autoComplete="off"
+                  autoFocus
+                  style={{
+                    fontSize: `calc(clamp(18px, 2.6vw, 28px) * ${inputScale})`,
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      promptSpeech.discard();
+                      void onRun();
+                    }
+                  }}
+                />
+                {promptSpeech.supported && (
+                  <button
+                    type="button"
+                    className={`nimble-mic${promptSpeech.listening ? " is-listening" : ""}`}
+                    onClick={togglePromptMic}
+                    disabled={running}
+                    aria-label={
+                      promptSpeech.listening
+                        ? "Stop listening"
+                        : "Dictate prompt"
+                    }
+                    aria-pressed={promptSpeech.listening}
+                  >
+                    <MicIcon />
+                  </button>
+                )}
+                {(promptSpeech.listening || promptVoiceDraft) && (
+                  <button
+                    type="button"
+                    className="nimble-mic-discard"
+                    onClick={discardPromptDraft}
+                    disabled={running}
+                    aria-label="Discard draft"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
               {unitHint && <p className="nimble-unit-hint">{unitHint}</p>}
             </>
           ) : (
@@ -2161,7 +2273,7 @@ export function NimbleView() {
               type="button"
               className="nimble-lens-clear"
               onClick={clearAtomFocus}
-              title="Clear focus (Esc)"
+              aria-label="Discard"
             >
               ×
             </button>
@@ -2187,20 +2299,40 @@ export function NimbleView() {
                 </div>
               );
             })()}
-          <input
-            ref={focusNoteRef}
-            className="nimble-focus-note"
-            value={focusNote}
-            disabled={patching}
-            placeholder="note"
-            onChange={(e) => setFocusNote(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void applyAtomPatch("critique");
-              }
-            }}
-          />
+          <div className="nimble-focus-note-row">
+            <input
+              ref={focusNoteRef}
+              className="nimble-focus-note"
+              value={focusNote}
+              disabled={patching}
+              placeholder={focusSpeech.listening ? "listening…" : "note"}
+              onChange={(e) => setFocusNote(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  focusSpeech.discard();
+                  void applyAtomPatch("critique");
+                }
+              }}
+            />
+            {focusSpeech.supported && (
+              <button
+                type="button"
+                className={`nimble-mic${focusSpeech.listening ? " is-listening" : ""}`}
+                onClick={toggleFocusMic}
+                disabled={patching}
+                aria-label={
+                  focusSpeech.listening ? "Stop listening" : "Dictate note"
+                }
+                aria-pressed={focusSpeech.listening}
+              >
+                <MicIcon />
+              </button>
+            )}
+          </div>
+          {focusSpeech.error && (
+            <span className="nimble-mic-error">{focusSpeech.error}</span>
+          )}
           {patching && (
             <span className="nimble-italic nimble-focus-wait">working…</span>
           )}
@@ -2208,7 +2340,13 @@ export function NimbleView() {
       )}
 
       <div className="nimble-dock">
-        <span className="nimble-dock-hint">Enter run · Shift+Enter line</span>
+        <span className="nimble-dock-hint">
+          {promptSpeech.error
+            ? promptSpeech.error
+            : promptSpeech.listening
+              ? "Listening… · Esc discard"
+              : "Enter run · Shift+Enter line"}
+        </span>
         <div className="nimble-dock-actions">
           {committed != null && (
             <button
@@ -2225,7 +2363,10 @@ export function NimbleView() {
           <button
             type="button"
             className="nimble-btn"
-            onClick={() => void onRun()}
+            onClick={() => {
+              promptSpeech.discard();
+              void onRun();
+            }}
             disabled={running || !firstUnit(committed ?? draft)}
             title="Run"
             aria-label="Run"
